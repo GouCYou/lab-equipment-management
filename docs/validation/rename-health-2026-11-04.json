@@ -1,0 +1,17 @@
+{
+  "projectName": "博仪",
+  "date": "2026-11-04",
+  "mode": "demo",
+  "services": {
+    "backend": {
+      "status": 200
+    },
+    "ai": {
+      "status": 200
+    },
+    "frontend": {
+      "status": 200,
+      "brandConfirmed": true
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "passed": true,
+  "source": "lab_equipment_local",
+  "target": "lab_equipment_test",
+  "tableCounts": {
+    "sys_user": 4,
+    "equipment": 12,
+    "reservation": 2,
+    "loan_record": 1,
+    "fault_ticket": 1,
+    "file_object": 1,
+    "conversation": 2,
+    "chat_message": 4,
+    "ai_run": 2,
+    "ai_access": 0
+  },
+  "filesVerified": 1,
+  "sessionsRevoked": true,
+  "authVersionIncremented": true,
+  "sourceDatabaseUnchanged": true,
+  "unsafeArchiveRejected": true
+}

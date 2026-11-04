@@ -1,0 +1,12 @@
+{
+  "provider": "七牛云",
+  "baseUrl": "https://api.qnaigc.com/v1",
+  "model": "qiniu/conatus-free",
+  "probe": "single minimal text request, max_tokens=16",
+  "httpStatus": 429,
+  "providerErrorCode": "free_campaign_global_limit",
+  "providerMessage": "Too many requests for this free model",
+  "retryAfter": null,
+  "diagnosis": "供应商免费活动模型全局限流；不是图像输入失败或密钥无效",
+  "automaticRetryOn429": false
+}

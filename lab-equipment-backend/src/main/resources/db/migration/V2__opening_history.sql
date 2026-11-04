@@ -1,0 +1,2 @@
+CREATE TABLE lab_open_rule(id CHAR(36) PRIMARY KEY,lab_id CHAR(36) NOT NULL,open_start INT NOT NULL,open_end INT NOT NULL,effective_from DATETIME(3) NOT NULL,effective_to DATETIME(3),FOREIGN KEY(lab_id) REFERENCES laboratory(id),INDEX(lab_id,effective_from,effective_to));
+INSERT INTO lab_open_rule(id,lab_id,open_start,open_end,effective_from) SELECT UUID(),id,open_start,open_end,created_at FROM laboratory;

@@ -1,0 +1,97 @@
+name: lab-equipment
+services:
+  mysql:
+    image: mysql:8.0.46
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Run scripts/setup-env.sh first}
+      MYSQL_DATABASE: ${DB_NAME:-lab_equipment}
+      MYSQL_USER: ${DB_USERNAME:-lab_equipment}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?Missing database password}
+      TZ: UTC
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_0900_ai_ci"]
+    volumes: [mysql-data:/var/lib/mysql]
+    healthcheck:
+      test: [CMD-SHELL, 'MYSQL_PWD="$${MYSQL_ROOT_PASSWORD}" mysql -h 127.0.0.1 -u root -e "SELECT 1" >/dev/null 2>&1']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Missing Redis password}
+    command: [sh, -c, 'exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"']
+    volumes: [redis-data:/data]
+    healthcheck:
+      test: [CMD-SHELL, 'REDISCLI_AUTH="$${REDIS_PASSWORD}" redis-cli ping | grep -q PONG']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  qdrant:
+    image: qdrant/qdrant:v1.15.5
+    restart: unless-stopped
+    volumes: [qdrant-data:/qdrant/storage]
+    environment:
+      QDRANT__TELEMETRY_DISABLED: 'true'
+  ai:
+    build: ./lab-equipment-ai
+    restart: unless-stopped
+    environment:
+      AI_MODE: ${AI_MODE:-real}
+      AI_INTERNAL_KEY: ${AI_INTERNAL_KEY:?Missing internal key}
+      BACKEND_INTERNAL_URL: http://backend:8080
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_COLLECTION: lab_equipment_knowledge
+    depends_on:
+      qdrant:
+        condition: service_started
+  backend:
+    build: ./lab-equipment-backend
+    restart: unless-stopped
+    environment:
+      SERVER_ADDRESS: 0.0.0.0
+      SERVER_PORT: 8080
+      DB_URL: jdbc:mysql://mysql:3306/${DB_NAME:-lab_equipment}?serverTimezone=UTC&forceConnectionTimeZoneToSession=true&allowPublicKeyRetrieval=true&useSSL=false
+      DB_USERNAME: ${DB_USERNAME:-lab_equipment}
+      DB_PASSWORD: ${DB_PASSWORD:?Missing database password}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Missing Redis password}
+      AI_BASE_URL: http://ai:8000
+      AI_MODE: ${AI_MODE:-real}
+      AI_INTERNAL_KEY: ${AI_INTERNAL_KEY:?Missing internal key}
+      KNOWLEDGE_DIR: /data/knowledge
+      SEED_ADMIN_USERNAME: ${SEED_ADMIN_USERNAME:-admin}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:?Missing administrator password}
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-false}
+      SEED_DEMO_CREDENTIAL_FILE: /data/knowledge/demo-accounts.json
+      GENERATION_BASE_URL: ${GENERATION_BASE_URL:-}
+      GENERATION_API_KEY: ${GENERATION_API_KEY:-}
+      GENERATION_MODEL: ${GENERATION_MODEL:-}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-}
+    volumes: [knowledge-data:/data/knowledge]
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, curl, -fsS, http://127.0.0.1:8080/api/health]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+  frontend:
+    build: ./lab-equipment-frontend
+    restart: unless-stopped
+    ports: ["${WEB_PORT:-8089}:80"]
+    depends_on:
+      backend:
+        condition: service_healthy
+volumes:
+  mysql-data:
+  redis-data:
+  qdrant-data:
+  knowledge-data:

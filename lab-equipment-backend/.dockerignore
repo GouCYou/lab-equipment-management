@@ -1,0 +1,7 @@
+node_modules
+.venv
+target
+dist
+.runtime
+__pycache__
+.env*

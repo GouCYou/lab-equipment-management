@@ -1,0 +1,81 @@
+<script setup lang="ts">
+import {
+  PhChatsCircle,
+  PhSquaresFour,
+  PhCube,
+  PhCalendarBlank,
+  PhArrowUDownLeft,
+  PhWrench,
+  PhBookOpen,
+  PhChartBar,
+  PhBell,
+  PhUser,
+  PhGearSix,
+  PhList,
+  PhPlus,
+  PhSidebarSimple,
+  PhSignOut,
+  PhArrowUp,
+  PhPaperclip,
+  PhX,
+  PhMagnifyingGlass,
+  PhArrowRight,
+  PhFlask,
+  PhCheck,
+  PhClockCounterClockwise,
+  PhCircleNotch,
+  PhTrash,
+  PhDownloadSimple,
+  PhDotsThree,
+  PhSlidersHorizontal,
+  PhLightning,
+  PhImage,
+  PhCaretDown,
+  PhArrowLeft,
+  PhShieldCheck,
+} from "@phosphor-icons/vue";
+const icons: Record<string, any> = {
+  chat: PhChatsCircle,
+  dashboard: PhSquaresFour,
+  equipment: PhCube,
+  calendar: PhCalendarBlank,
+  return: PhArrowUDownLeft,
+  ticket: PhWrench,
+  book: PhBookOpen,
+  chart: PhChartBar,
+  bell: PhBell,
+  user: PhUser,
+  settings: PhGearSix,
+  menu: PhList,
+  plus: PhPlus,
+  sidebar: PhSidebarSimple,
+  logout: PhSignOut,
+  send: PhArrowUp,
+  attach: PhPaperclip,
+  close: PhX,
+  search: PhMagnifyingGlass,
+  arrow: PhArrowRight,
+  lab: PhFlask,
+  check: PhCheck,
+  clock: PhClockCounterClockwise,
+  loading: PhCircleNotch,
+  delete: PhTrash,
+  download: PhDownloadSimple,
+  more: PhDotsThree,
+  filter: PhSlidersHorizontal,
+  spark: PhLightning,
+  image: PhImage,
+  down: PhCaretDown,
+  back: PhArrowLeft,
+  shield: PhShieldCheck,
+};
+defineProps<{ name: string; size?: number }>();
+</script>
+<template>
+  <component
+    :is="icons[name] || PhCube"
+    :size="size || 20"
+    weight="regular"
+    aria-hidden="true"
+  />
+</template>

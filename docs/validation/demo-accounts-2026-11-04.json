@@ -1,0 +1,37 @@
+{
+  "passed": true,
+  "password": "123456",
+  "accounts": [
+    {
+      "username": "admin",
+      "status": 200,
+      "roles": [
+        "ADMIN"
+      ]
+    },
+    {
+      "username": "student",
+      "status": 200,
+      "roles": [
+        "STUDENT"
+      ]
+    },
+    {
+      "username": "labstaff",
+      "status": 200,
+      "roles": [
+        "LAB_STAFF"
+      ]
+    },
+    {
+      "username": "technician",
+      "status": 200,
+      "roles": [
+        "TECHNICIAN"
+      ]
+    }
+  ],
+  "runnerTests": 60,
+  "javaTests": 16,
+  "frontendBuild": true
+}

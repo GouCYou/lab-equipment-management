@@ -1,0 +1,20 @@
+.env
+.env.*
+!.env.example
+!.env.local.example
+.runtime/
+node_modules/
+target/
+.venv/
+__pycache__/
+.pytest_cache/
+dist/
+*.pyc
+.DS_Store
+*.log
+*.tsbuildinfo
+# Internal UI audit captures; curated public demos live in docs/demo-screenshots/
+docs/ui-audit-*/
+docs/ui-final-*/
+docs/ui-improvements/
+docs/ui-preview/

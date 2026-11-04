@@ -1,0 +1,49 @@
+{
+  "passed": true,
+  "checks": [
+    {
+      "name": "账户、角色、实验室、设备真实接口创建",
+      "passed": true
+    },
+    {
+      "name": "请求幂等、客户端不能指定他人身份、本人及实验室隔离",
+      "passed": true
+    },
+    {
+      "name": "并发审批重叠预约仅一条成功",
+      "passed": true
+    },
+    {
+      "name": "并发实物发放仅产生一条未归还借用",
+      "passed": true
+    },
+    {
+      "name": "图片上传、附件隔离、AI调用真实归还服务并释放占用",
+      "passed": true
+    },
+    {
+      "name": "故障核实禁借并使未领取预约失效",
+      "passed": true
+    },
+    {
+      "name": "分派、维修、验收退回、关闭、多故障和手工停用独立联动",
+      "passed": true
+    },
+    {
+      "name": "AI总结借还、工单、利用率；学生不能越权读取管理统计",
+      "passed": true
+    },
+    {
+      "name": "资料解析与关键词检索、知识发布、引用展示和停用过滤",
+      "passed": true
+    },
+    {
+      "name": "真实模式缺模型明确失败且不回退模拟；内部接口拒绝未授权",
+      "passed": true
+    }
+  ],
+  "count": 10,
+  "mode": "demo",
+  "scope": "isolated lab_equipment_test; real MySQL Redis Qdrant HTTP; generated text and vectors are synthetic",
+  "timestamp": "2026-11-04T12:28:09.643233+00:00"
+}

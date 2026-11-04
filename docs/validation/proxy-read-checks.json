@@ -1,0 +1,13 @@
+{
+  "passed": true,
+  "results": {
+    "/auth/me": "HTTP 200",
+    "/admin/users": "HTTP 200",
+    "/admin/roles": "HTTP 200",
+    "/admin/ai-settings": "HTTP 200",
+    "/admin/audit-logs": "HTTP 200",
+    "/statistics": "HTTP 200",
+    "/dashboard": "HTTP 200",
+    "/knowledge": "HTTP 200"
+  }
+}
