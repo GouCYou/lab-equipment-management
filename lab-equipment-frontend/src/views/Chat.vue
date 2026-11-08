@@ -15,6 +15,7 @@ import type { Row } from "../state";
 import Icon from "../components/Icon.vue";
 import ThemePopover from "../components/ThemePopover.vue";
 import Badge from "../components/Badge.vue";
+import { historyVisible } from "../preferences";
 import ChatComposer from "../components/ChatComposer.vue";
 import CopyMessage from "../components/CopyMessage.vue";
 import UserMessage from "../components/UserMessage.vue";
@@ -49,7 +50,7 @@ const history = ref<Row[]>([]),
   photos = ref<Row[]>([]),
   busy = ref(false),
   loading = ref(false),
-  historyOpen = ref(window.innerWidth > 760),
+  historyOpen = historyVisible,
   workOpen = ref(false),
   labId = ref(""),
   currentRun = ref<Row | null>(null),

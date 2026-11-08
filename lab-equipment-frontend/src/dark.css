@@ -1,0 +1,461 @@
+.theme-toggle {
+  border: 0;
+  background: transparent;
+  color: #7d708c;
+  flex-shrink: 0;
+}
+.theme-toggle:hover {
+  background: var(--soft);
+  color: var(--accent);
+}
+.public-theme-toggle {
+  position: fixed;
+  top: 20px;
+  right: 24px;
+  z-index: 60;
+  border-radius: 12px;
+  background: var(--soft);
+}
+html.dark {
+  color-scheme: dark;
+  --ink: #ede7f5;
+  --muted: #aa9db8;
+  --line: #3b3348;
+  --canvas: #17151d;
+  --accent: #b7a0f4;
+  --accent-dark: #cab7ff;
+  --soft: #32283f;
+  --surface: #211d2a;
+  --surface-raised: #282232;
+  --el-bg-color: #211d2a;
+  --el-bg-color-page: #17151d;
+  --el-bg-color-overlay: #282232;
+  --el-fill-color-blank: #211d2a;
+  --el-fill-color: #302938;
+  --el-fill-color-light: #2b2434;
+  --el-fill-color-lighter: #261f30;
+  --el-fill-color-extra-light: #241f2c;
+  --el-fill-color-dark: #3a3047;
+  --el-fill-color-darker: #443750;
+  --el-fill-color-disabled: #25202e;
+  --el-text-color-primary: #ede7f5;
+  --el-text-color-regular: #c9bdd8;
+  --el-text-color-secondary: #aa9db8;
+  --el-text-color-placeholder: #95869f;
+  --el-text-color-disabled: #766c80;
+  --el-border-color: #4a3e59;
+  --el-border-color-light: #3b3348;
+  --el-border-color-lighter: #332b3d;
+  --el-border-color-extra-light: #2e2736;
+  --el-border-color-dark: #564767;
+  --el-color-primary: #a78ae8;
+  --el-color-primary-light-3: #8068b4;
+  --el-color-primary-light-5: #66528e;
+  --el-color-primary-light-7: #4b3b69;
+  --el-color-primary-light-8: #3b2e53;
+  --el-color-primary-light-9: #2f253f;
+  --el-color-primary-dark-2: #baa1f3;
+  --el-color-success: #9aaddf;
+  --el-color-success-light-8: #303b56;
+  --el-color-success-light-9: #252e42;
+  --el-color-warning: #d9b47f;
+  --el-color-warning-light-8: #4b3b28;
+  --el-color-warning-light-9: #332a21;
+  --el-color-danger: #e69aad;
+  --el-color-danger-light-8: #4f2e3d;
+  --el-color-danger-light-9: #36232e;
+  --el-mask-color: #17151dd9;
+  --el-mask-color-extra-light: #17151d99;
+  background: var(--canvas);
+  color: var(--ink);
+}
+html.dark body {
+  background: var(--canvas);
+  color: var(--ink);
+}
+html.dark ::selection {
+  background: #574174;
+  color: #fff;
+}
+html.dark .el-loading-mask {
+  background: #17151de0;
+}
+html.dark :is(.app-shell, .main-shell, .page, .admin-layout, .login-page) {
+  background: var(--canvas);
+}
+html.dark .rail {
+  background: #1d1926;
+  border-color: var(--line);
+}
+html.dark :is(.topbar, .chat-header) {
+  background: #1c1824;
+  border-color: var(--line);
+}
+html.dark :is(.chat-layout, .conversation) {
+  background: #1a1720;
+}
+html.dark :is(.history-panel, .admin-navigation, .work-panel) {
+  background: #201b2a;
+  border-color: var(--line);
+}
+html.dark
+  :is(
+    .panel,
+    .stat-card,
+    .quick-grid > button,
+    .equipment-card,
+    .ticket-counts button,
+    .metric-card,
+    .notification-row,
+    .business-card,
+    .composer-files > span
+  ) {
+  background: var(--surface);
+  border-color: var(--line);
+}
+html.dark
+  :is(
+    .upload-tile,
+    .selection-summary,
+    .notice-line,
+    .prompt-grid > button,
+    .category-chips span,
+    .version-text pre,
+    .markdown pre,
+    .citations p
+  ) {
+  background: #272131;
+  border-color: var(--line);
+}
+html.dark .markdown code {
+  background: #33283f;
+  color: #d8bdf7;
+}
+html.dark .markdown pre code {
+  background: transparent;
+}
+html.dark :is(.theme-popover, .theme-confirm) {
+  background: linear-gradient(145deg, #2a2335, #211c2b);
+  border-color: #493c59;
+  box-shadow: 0 18px 60px #0006;
+}
+html.dark
+  :is(
+    .theme-confirm textarea,
+    .theme-confirm input,
+    input[type="datetime-local"],
+    input[type="date"]
+  ) {
+  background: #1c1824;
+  color: var(--ink);
+  border-color: #50405f;
+}
+html.dark .theme-modal-veil {
+  background: #07050c99;
+}
+html.dark .theme-menu > button {
+  color: #d8cce4;
+}
+html.dark .theme-menu > button.danger {
+  color: #e69aad;
+}
+html.dark .theme-menu > button.divider {
+  border-color: var(--line);
+}
+html.dark
+  :is(
+    .theme-menu > button:hover,
+    .theme-menu > button:focus-visible,
+    .theme-secondary:hover
+  ) {
+  background: #3a2d4d;
+}
+html.dark .theme-primary {
+  background: #9476d4;
+  color: #fff;
+}
+html.dark .theme-primary:hover {
+  background: #a98be8;
+}
+html.dark .theme-secondary {
+  background: #2a2235;
+  color: #d0c0e2;
+  border-color: #554167;
+}
+html.dark .history-row.selected,
+html.dark .admin-navigation > button.selected {
+  background: #392c4b;
+}
+html.dark .rail nav::before,
+html.dark .rail nav .router-link-active {
+  background: #352942;
+}
+html.dark .rail nav a:hover {
+  background: #2c2436;
+}
+html.dark
+  :is(
+    .rail nav a,
+    .nav-icon,
+    .breadcrumb,
+    .top-user,
+    .history-top button,
+    .history-row > button:first-child,
+    .admin-navigation > button,
+    .admin-back,
+    .work-section > a,
+    .chat-scope-select
+  ) {
+  color: #bfb0d0;
+}
+html.dark
+  :is(
+    .rail nav .router-link-active,
+    .history-row.selected > button:first-child,
+    .admin-navigation > button.selected
+  ) {
+  color: #d0b6ff;
+}
+html.dark
+  :is(
+    h1,
+    h2,
+    h3,
+    h4,
+    .welcome h1,
+    .login-form h2,
+    .intro-copy h1,
+    .business-card > strong,
+    .equipment-title,
+    .metric-card strong,
+    .ticket-counts strong,
+    .notification-row strong,
+    .admin-label,
+    .model-settings h2,
+    .role-card h3,
+    .quick-grid strong,
+    .stat-card strong,
+    .document-card h3,
+    .markdown strong,
+    .markdown h1,
+    .markdown h2,
+    .markdown h3,
+    .theme-confirm h2
+  ) {
+  color: var(--ink);
+}
+html.dark
+  :is(
+    .muted,
+    small,
+    .form-note,
+    .card-meta,
+    .business-card > p,
+    .document-card p,
+    .document-meta,
+    .equipment-model,
+    .equipment-location,
+    .equipment-availability,
+    .category-label,
+    .notification-row p,
+    .notification-row small,
+    .settings-navigation p,
+    .role-card p,
+    .tool-event p,
+    .tool-event small,
+    .work-section > p,
+    .run-status,
+    .history-empty,
+    .history-footer,
+    .conversation-date,
+    .chat-header > div > span:first-of-type,
+    .citations > span,
+    .citations details,
+    .citations p,
+    .page-heading p,
+    .theme-confirm p,
+    .timeline-item p,
+    .quick-grid p,
+    .stat-card span,
+    .upload-tile,
+    .selection-summary,
+    .category-chips span
+  ) {
+  color: #b4a6c3;
+}
+html.dark
+  :is(
+    .markdown,
+    .user-bubble,
+    .pre-wrap,
+    .detail-body,
+    td,
+    dd,
+    .version-text pre,
+    .form-stack > label,
+    .form-pair > label
+  ) {
+  color: #d8cde3;
+}
+html.dark .message-actions,
+html.dark .message-copy,
+html.dark .message-edit,
+html.dark .thinking,
+html.dark .regenerating-status,
+html.dark .theme-toggle {
+  color: #b5a1c9;
+}
+html.dark
+  :is(
+    .avatar,
+    .welcome-mark,
+    .mini-mark,
+    .violet,
+    .object-icon,
+    .document-icon,
+    .notification-icon,
+    .search-symbol,
+    .business-card .object-icon
+  ) {
+  background: #352940;
+  color: #c7a7f7;
+}
+html.dark .blue,
+html.dark .badge.blue {
+  background: #273249;
+  color: #a4b9ed;
+}
+html.dark .amber,
+html.dark .badge.warn {
+  background: #3d3024;
+  color: #e2ba85;
+}
+html.dark .rose,
+html.dark .badge.danger {
+  background: #3c2634;
+  color: #e6a2b8;
+}
+html.dark .badge.muted {
+  background: #302a37;
+  color: #b3a5c0;
+}
+html.dark .overdue-strip {
+  background: #33291f;
+  border-color: #5f4830;
+  color: #e1b47e;
+}
+html.dark .inline-error {
+  background: #36232e;
+  border-color: #624052;
+  color: #e9adbc;
+}
+html.dark .notification-row.unread,
+html.dark .ticket-counts button.selected {
+  background: #2c2238;
+}
+html.dark .equipment-art {
+  background: linear-gradient(135deg, #30263d, #27212f);
+}
+html.dark .equipment-card:nth-child(3n + 2) .equipment-art {
+  background: linear-gradient(135deg, #253045, #222836);
+}
+html.dark .equipment-card:nth-child(3n) .equipment-art {
+  background: linear-gradient(135deg, #352736, #2b2230);
+}
+html.dark .equipment-glyph {
+  background: #3b3048;
+  color: #bda5d7;
+}
+html.dark .equipment-art .badge {
+  background: #282131ed;
+}
+html.dark th {
+  background: #241f2c;
+  color: #c5b6d3;
+  border-color: var(--line);
+}
+html.dark td {
+  border-color: var(--line);
+}
+html.dark tr:hover td {
+  background: #2a2333;
+}
+html.dark
+  :is(
+    .table-scroll,
+    .detail-section,
+    .citations,
+    .work-section,
+    .admin-label,
+    .history-panel,
+    .topbar,
+    .chat-header,
+    .timeline-item
+  ) {
+  border-color: var(--line);
+}
+html.dark .timeline-item::before,
+html.dark .rate-track {
+  background: #3c3048;
+}
+html.dark .timeline-dot,
+html.dark .rate-track i {
+  background: #9874ca;
+}
+html.dark .user-bubble {
+  background: #362943;
+}
+html.dark .message-editor {
+  background: #282030;
+  border-color: #554167;
+  color: #e2d7ed;
+}
+html.dark .message-editor:focus-within {
+  border-color: #a285ce;
+}
+html.dark .conversation-composer {
+  background: #292332;
+  border-color: #44364f;
+}
+html.dark .conversation-composer:focus-within {
+  background: #302639;
+  border-color: #8c6db2;
+  box-shadow: 0 0 0 3px #8c6db222;
+}
+html.dark .conversation-composer .el-textarea__inner {
+  color: #e1d5ed;
+}
+html.dark .conversation-composer .el-textarea__inner::placeholder {
+  color: #a18eaf;
+}
+html.dark .login-intro {
+  background: linear-gradient(140deg, #281e36, #201a2b 65%, #282032);
+  border-color: var(--line);
+}
+html.dark .login-intro p,
+html.dark .intro-copy > p {
+  color: #beadce;
+}
+html.dark .theme-toggle:hover {
+  background: #392b49;
+  color: #dfc6ff;
+}
+html.dark .public-theme-toggle {
+  background: #33263f;
+}
+html.dark .el-input__wrapper {
+  box-shadow: 0 0 0 1px var(--el-border-color) inset;
+}
+html.dark .el-input__wrapper.is-focus {
+  box-shadow: 0 0 0 1px var(--el-color-primary) inset;
+}
+html.dark
+  :is(.equipment-actions, .equipment-glyph, .theme-menu > button.divider) {
+  border-color: var(--line);
+}
+html.dark :is(label, .asset-number, .eyebrow) {
+  color: #b9acc9;
+}
+html.dark :is(.metric-card p, .metric-card em, .stat-card em, .result-count) {
+  color: #b4a6c3;
+}

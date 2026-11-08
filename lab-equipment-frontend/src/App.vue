@@ -12,13 +12,15 @@ import {
   moduleViewed,
   refreshModuleUpdates,
 } from "./state";
+import { sidebarExpanded } from "./preferences";
+import ThemeToggle from "./components/ThemeToggle.vue";
 import Icon from "./components/Icon.vue";
 import ActionHost from "./components/ActionHost.vue";
 import ThemePopover from "./components/ThemePopover.vue";
 import ThemeConfirm from "./components/ThemeConfirm.vue";
 const route = useRoute(),
   router = useRouter(),
-  expanded = ref(false),
+  expanded = sidebarExpanded,
   mobile = ref(false);
 const nav = computed(() => [
   { path: "/chat", name: "AI 助手", icon: "chat" },
@@ -83,7 +85,9 @@ onMounted(async () => {
     <div class="brand-mark"><Icon name="lab" :size="28" /></div>
     <span>正在打开博仪…</span>
   </div>
-  <router-view v-else-if="route.meta.public" />
+  <template v-else-if="route.meta.public"
+    ><router-view /><ThemeToggle class="public-theme-toggle"
+  /></template>
   <div v-else class="app-shell" :class="{ expanded, mobile }">
     <aside class="rail">
       <button
@@ -122,6 +126,7 @@ onMounted(async () => {
         /></router-link>
       </nav>
       <div class="rail-bottom">
+        <ThemeToggle :expanded="expanded" />
         <router-link
           to="/notifications"
           title="消息中心"

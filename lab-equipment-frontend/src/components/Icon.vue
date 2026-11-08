@@ -36,6 +36,8 @@ import {
   PhPencilSimple,
   PhCopy,
   PhPushPin,
+  PhSun,
+  PhMoon,
   PhArrowClockwise,
 } from "@phosphor-icons/vue";
 const icons: Record<string, any> = {
@@ -75,6 +77,8 @@ const icons: Record<string, any> = {
   edit: PhPencilSimple,
   copy: PhCopy,
   pin: PhPushPin,
+  sun: PhSun,
+  moon: PhMoon,
   retry: PhArrowClockwise,
 };
 defineProps<{ name: string; size?: number }>();

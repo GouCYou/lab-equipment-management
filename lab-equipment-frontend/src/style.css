@@ -41,6 +41,11 @@
 * {
   box-sizing: border-box;
 }
+/* Keep wheel/trackpad gestures inside the page at scroll boundaries. */
+html,
+body {
+  overscroll-behavior: none;
+}
 body {
   margin: 0;
   font-size: 16px;
@@ -3706,4 +3711,18 @@ input[type="date"] {
 }
 .conversation-date {
   margin: 6px 0 24px;
+}
+
+/* Nested panels must not pass boundary scrolling to the document. */
+.rail nav,
+.history-list,
+.conversation-scroll,
+.work-panel,
+.admin-content,
+.table-scroll,
+.theme-modal-veil,
+.theme-menu,
+.el-overlay-dialog,
+.el-scrollbar__wrap {
+  overscroll-behavior: none;
 }
