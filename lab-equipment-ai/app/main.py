@@ -17,7 +17,7 @@ def authorized(x_internal_key: str = Header(default="")):
 
 @app.get("/health")
 def health():
-    return {"status": "UP", "mode": os.getenv("AI_MODE", "real")}
+    return {"status": "UP", "mode": "real"}
 
 
 async def guarded(operation):

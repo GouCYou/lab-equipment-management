@@ -2,6 +2,9 @@
 import asyncio
 import hashlib
 import math
+import logging
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 import os
 import re
 import time
@@ -58,19 +61,55 @@ def without_images(messages):
 
 
 
-async def post_json(url, payload, key="", timeout=35):
+def retry_delay(attempt, response=None):
+    # Same capped exponential backoff as the reference project.
+    delay = min(2 ** (attempt + 1), 30)
+    value = response.headers.get("retry-after") if response is not None else None
+    if value:
+        try:
+            seconds = float(value)
+        except ValueError:
+            try:
+                seconds = (parsedate_to_datetime(value) - datetime.now(timezone.utc)).total_seconds()
+            except (ValueError, TypeError, OverflowError):
+                seconds = 0
+        delay = max(delay, min(max(seconds, 0), 60))
+    return delay
+
+
+def retryable(response):
+    if response.status_code in (502, 503, 504):
+        return True
+    if response.status_code != 429:
+        return False
+    try:
+        error = response.json().get("error", {})
+        detail = str(error).lower()
+    except (ValueError, AttributeError):
+        detail = ""
+    return not any(word in detail for word in (
+        "insufficient_quota", "quota_exceeded", "daily", "rpd", "tpd",
+        "insufficient_balance", "insufficient_credit", "billing_hard_limit",
+    ))
+
+
+async def post_json(url, payload, key="", timeout=35, retries=4):
     headers = {"Authorization": f"Bearer {key}"} if key else {}
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
-        for attempt in range(2):
+        for attempt in range(retries + 1):
             try:
                 response = await client.post(url, json=payload, headers=headers)
             except (httpx.TimeoutException, httpx.NetworkError):
-                if attempt == 0:
-                    await asyncio.sleep(.5)
-                    continue
-                raise ProviderError("模型连接超时或网络不可用") from None
-            if response.status_code in (502, 503, 504) and attempt == 0:
-                await asyncio.sleep(1)
+                if attempt >= retries:
+                    raise ProviderError("模型连接超时或网络不可用") from None
+                delay = retry_delay(attempt)
+                logging.getLogger(__name__).warning("Model connection retry %s/%s in %ss", attempt + 1, retries, delay)
+                await asyncio.sleep(delay)
+                continue
+            if retryable(response) and attempt < retries:
+                delay = retry_delay(attempt, response)
+                logging.getLogger(__name__).warning("Model HTTP %s retry %s/%s in %ss", response.status_code, attempt + 1, retries, delay)
+                await asyncio.sleep(delay)
                 continue
             if response.status_code >= 400:
                 raise error_detail(response, key)
@@ -108,20 +147,7 @@ async def chat(config, messages, tools=None, max_tokens=1800):
         raise ProviderError("模型回复结构无效") from None
 
 
-def demo_vector(text, dimension=64):
-    # This is explicitly synthetic, never used to claim real semantic quality.
-    vector = [0.] * dimension
-    tokens = re.findall(r"[\u4e00-\u9fff]|[a-z0-9]+", text.lower())
-    for token in tokens:
-        digest = hashlib.sha256(token.encode()).digest()
-        vector[int.from_bytes(digest[:2], "big") % dimension] += 1
-    norm = math.sqrt(sum(x*x for x in vector)) or 1
-    return [x/norm for x in vector]
-
-
 async def embeddings(config, texts):
-    if config.get("AI_MODE", os.getenv("AI_MODE", "real")) == "demo":
-        return [demo_vector(t) for t in texts]
     base, model, key = (config.get("EMBEDDING_" + x, "") for x in ("BASE_URL", "MODEL", "API_KEY"))
     if not base or not model:
         raise ProviderError("缺少 Embedding 配置，请在管理后台单独配置向量模型")

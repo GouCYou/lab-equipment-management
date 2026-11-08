@@ -6,7 +6,7 @@ if [ -f .env ]; then
   exit 0
 fi
 mode=real
-if [ "${1:-}" = '--demo' ]; then mode=demo; fi
+
 umask 077
 cp .env.example .env
 python_cmd="${PYTHON:-python3}"
@@ -22,5 +22,5 @@ s=s.replace('AI_MODE=real','AI_MODE='+sys.argv[1])
 p.write_text(s)
 p.chmod(0o600)
 print('已生成 .env 和随机服务凭据。管理员用户名为 admin，演示登录密码统一为 123456。')
-print('当前 AI 模式：'+sys.argv[1]+'。真实模式需补全两组模型配置；演示模式生成的是合成示例。')
+print('请在模型接入中配置聊天模型 API。')
 PY

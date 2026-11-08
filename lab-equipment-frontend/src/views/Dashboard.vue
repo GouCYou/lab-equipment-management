@@ -31,7 +31,7 @@ watch(() => state.revision, load);
         <h1>{{ state.user?.name }}，你好</h1>
       </div>
       <el-button type="primary" @click="router.push('/chat')"
-        ><Icon name="chat" />问问 AI</el-button
+        ><Icon name="chat" /><span>问问 AI</span></el-button
       >
     </div>
     <div v-if="error" class="inline-error">

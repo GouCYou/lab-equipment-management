@@ -323,7 +323,7 @@ public class AiGateway {
       if (secrets || !k.endsWith("API_KEY")) out.put(k, v);
       else out.put(k + "_CONFIGURED", !v.isBlank());
     }
-    out.put("AI_MODE", env.getProperty("AI_MODE", "real"));
+    out.put("AI_MODE", "real");
     return out;
   }
 
@@ -368,9 +368,43 @@ public class AiGateway {
 
   List<Map<String, Object>> conversations(User u) {
     return db.rows(
-      "SELECT * FROM conversation WHERE user_id=? ORDER BY updated_at DESC LIMIT 100",
+      "SELECT * FROM conversation WHERE user_id=? ORDER BY pinned_at DESC,updated_at DESC LIMIT 100",
       u.id()
     );
+  }
+
+  @Transactional
+  public Map<String, Object> updateConversation(
+    User u,
+    String cid,
+    Map<String, Object> body
+  ) {
+    db.one(
+      "SELECT id FROM conversation WHERE id=? AND user_id=? FOR UPDATE",
+      cid,
+      u.id()
+    );
+    require(
+      body.containsKey("title") || body.containsKey("pinned"),
+      "请选择操作"
+    );
+    if (body.containsKey("title")) {
+      String title = str(body, "title").trim();
+      require(
+        !title.isEmpty() && title.length() <= 100,
+        "标题需为 1 至 100 个字"
+      );
+      db.update("UPDATE conversation SET title=? WHERE id=?", title, cid);
+    }
+    if (body.containsKey("pinned")) {
+      require(body.get("pinned") instanceof Boolean, "置顶状态无效");
+      db.update(
+        "UPDATE conversation SET pinned_at=? WHERE id=?",
+        bool(body.get("pinned")) ? now() : null,
+        cid
+      );
+    }
+    return db.one("SELECT * FROM conversation WHERE id=?", cid);
   }
 
   Map<String, Object> conversation(User u, String id) {
@@ -468,10 +502,59 @@ public class AiGateway {
     require(photos.size() <= 6, "一次最多 6 张图片");
     for (var p : photos) files.requireOwnedImage(u, p);
     String cid = str(b, "conversationId");
+    String editId = str(b, "editMessageId");
+    if (!editId.isEmpty()) {
+      db.one(
+        "SELECT id FROM conversation WHERE id=? AND user_id=? FOR UPDATE",
+        cid,
+        u.id()
+      );
+      require(
+        db.count(
+          "SELECT COUNT(*) FROM ai_run WHERE conversation_id=? AND status IN ('QUEUED','RUNNING')",
+          cid
+        ) == 0,
+        "当前对话正在处理，请等待完成"
+      );
+      var source = db.rows(
+        "SELECT * FROM chat_message WHERE conversation_id=? ORDER BY created_at,id",
+        cid
+      );
+      var target = source
+        .stream()
+        .filter(
+          m -> str(m, "id").equals(editId) && str(m, "role").equals("user")
+        )
+        .findFirst()
+        .orElseThrow(() -> new ApiError(404, "NOT_FOUND", "消息不存在"));
+      for (String photo : strings(target.get("attachments")))
+        require(photos.contains(photo), "编辑时请保留原消息图片");
+      String branch = id();
+      db.update(
+        "INSERT INTO conversation(id,user_id,title,created_at,updated_at) VALUES(?,?,?,?,?)",
+        branch,
+        u.id(),
+        text.isEmpty()
+          ? "设备图片与归还"
+          : text.substring(0, Math.min(28, text.length())),
+        now(),
+        now()
+      );
+      for (var message : source) {
+        if (str(message, "id").equals(editId)) break;
+        db.update(
+          "INSERT INTO chat_message(id,conversation_id,role,content,attachments,cards,citations,run_id,created_at) SELECT ?,?,role,content,attachments,cards,citations,run_id,created_at FROM chat_message WHERE id=?",
+          id(),
+          branch,
+          message.get("id")
+        );
+      }
+      cid = branch;
+    }
     if (cid.isEmpty()) {
       cid = id();
       db.update(
-        "INSERT INTO conversation VALUES(?,?,?,?,?)",
+        "INSERT INTO conversation(id,user_id,title,created_at,updated_at) VALUES(?,?,?,?,?)",
         cid,
         u.id(),
         text.isEmpty()
@@ -519,7 +602,7 @@ public class AiGateway {
     }
     String rid = id(),
       grant = UUID.randomUUID() + "-" + UUID.randomUUID();
-    String mode = env.getProperty("AI_MODE", "real");
+    String mode = "real";
     db.update(
       "INSERT INTO ai_run(id,conversation_id,user_id,status,mode,query,photo_ids,context_json,grant_hash,started_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
       rid,
@@ -544,6 +627,61 @@ public class AiGateway {
       now()
     );
     db.update("UPDATE conversation SET updated_at=? WHERE id=?", now(), cid);
+    TransactionSynchronizationManager.registerSynchronization(
+      new TransactionSynchronization() {
+        @Override
+        public void afterCommit() {
+          try {
+            executor.submit(() -> execute(rid, grant));
+          } catch (RejectedExecutionException e) {
+            db.update(
+              "UPDATE ai_run SET status='FAILED',error='智能服务繁忙，请稍后重试',finished_at=?,grant_hash=NULL WHERE id=?",
+              now(),
+              rid
+            );
+          }
+        }
+      }
+    );
+    return Map.of("runId", rid, "conversationId", cid, "status", "QUEUED");
+  }
+
+  @Transactional
+  public Map<String, Object> retry(User u, String rid) {
+    db.one("SELECT id FROM sys_user WHERE id=? FOR UPDATE", u.id());
+    var r = db.one(
+      "SELECT * FROM ai_run WHERE id=? AND user_id=? FOR UPDATE",
+      rid,
+      u.id()
+    );
+    require(
+      Set.of("FAILED", "INTERRUPTED").contains(str(r, "status")),
+      "当前请求不能重试"
+    );
+    String cid = str(r, "conversationId");
+    var latest = db.rows(
+      "SELECT id FROM ai_run WHERE conversation_id=? ORDER BY started_at DESC LIMIT 1",
+      cid
+    );
+    require(
+      !latest.isEmpty() && str(latest.getFirst(), "id").equals(rid),
+      "请重试最新一条请求"
+    );
+    require(
+      db.count(
+        "SELECT COUNT(*) FROM ai_run WHERE user_id=? AND status IN ('QUEUED','RUNNING')",
+        u.id()
+      ) < 2,
+      "同时最多执行两个请求"
+    );
+    for (String photo : strings(r.get("photoIds")))
+      files.requireOwnedImage(u, photo);
+    String grant = UUID.randomUUID() + "-" + UUID.randomUUID();
+    db.update(
+      "UPDATE ai_run SET status='QUEUED',error=NULL,finished_at=NULL,grant_hash=? WHERE id=?",
+      hash(grant),
+      rid
+    );
     TransactionSynchronizationManager.registerSynchronization(
       new TransactionSynchronization() {
         @Override
@@ -853,7 +991,11 @@ public class AiGateway {
           );
           boolean exact =
             active.size() == 1 ||
-            (str(r,"query").contains(str(loan,"equipmentName")) && active.stream().filter(l -> str(r,"query").contains(str(l,"equipmentName"))).count()==1) ||
+            (str(r, "query").contains(str(loan, "equipmentName")) &&
+              active
+                .stream()
+                .filter(l -> str(r, "query").contains(str(l, "equipmentName")))
+                .count() == 1) ||
             str(context, "returnLoanId").equals(lid) ||
             str(r, "query").contains(str(loan, "assetNo")) ||
             str(args, "identifiedAssetNo").equals(str(loan, "assetNo"));

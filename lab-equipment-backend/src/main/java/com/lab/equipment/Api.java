@@ -377,6 +377,14 @@ public class Api {
     return ai.conversation(auth.current(), id);
   }
 
+  @PatchMapping("/conversations/{id}")
+  Object updateConversation(
+    @PathVariable String id,
+    @RequestBody Map<String, Object> body
+  ) {
+    return ai.updateConversation(auth.current(), id, body);
+  }
+
   @DeleteMapping("/conversations/{id}")
   Object deleteConversation(@PathVariable String id) {
     ai.deleteConversation(auth.current(), id);
@@ -389,6 +397,11 @@ public class Api {
     @RequestHeader(value = "Idempotency-Key", required = false) String key
   ) {
     return ai.send(auth.current(), b, key);
+  }
+
+  @PostMapping("/ai-runs/{id}/retry")
+  Object retryRun(@PathVariable String id) {
+    return ai.retry(auth.current(), id);
   }
 
   @GetMapping("/ai-runs/{id}")

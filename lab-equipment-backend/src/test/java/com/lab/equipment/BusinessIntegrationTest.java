@@ -48,6 +48,139 @@ class BusinessIntegrationTest {
   ModuleUpdates moduleUpdates;
 
   @Test
+  void conversationPinAndRenamePersistAndRespectOwnership() {
+    String cid = id(),
+      recent = id();
+    db.update(
+      "INSERT INTO conversation(id,user_id,title,created_at,updated_at) VALUES(?,?,?,?,?)",
+      cid,
+      student.id(),
+      "旧标题",
+      now(),
+      Timestamp.from(Instant.now().minusSeconds(60))
+    );
+    db.update(
+      "INSERT INTO conversation(id,user_id,title,created_at,updated_at) VALUES(?,?,?,?,?)",
+      recent,
+      student.id(),
+      "最近对话",
+      now(),
+      now()
+    );
+    assertEquals(recent, str(ai.conversations(student).getFirst(), "id"));
+    ai.updateConversation(
+      student,
+      cid,
+      Map.of("pinned", true, "title", "新标题")
+    );
+    assertEquals(cid, str(ai.conversations(student).getFirst(), "id"));
+    assertEquals("新标题", str(ai.conversation(student, cid), "title"));
+    assertNotNull(ai.conversation(student, cid).get("pinnedAt"));
+    assertThrows(ApiError.class, () ->
+      ai.updateConversation(other, cid, Map.of("title", "越权"))
+    );
+    assertThrows(ApiError.class, () ->
+      ai.updateConversation(student, cid, Map.of("title", "  "))
+    );
+    ai.updateConversation(student, cid, Map.of("pinned", false));
+    assertNull(ai.conversation(student, cid).get("pinnedAt"));
+    assertEquals(recent, str(ai.conversations(student).getFirst(), "id"));
+  }
+
+  @Test
+  @org.springframework.transaction.annotation.Transactional
+  void editingBranchesAtSelectedMessageAndRetryKeepsOneUserTurn() {
+    String cid = id(),
+      first = id(),
+      second = id(),
+      rid = id();
+    db.update(
+      "INSERT INTO conversation(id,user_id,title,created_at,updated_at) VALUES(?,?,?,?,?)",
+      cid,
+      student.id(),
+      "原对话",
+      now(),
+      now()
+    );
+    db.update(
+      "INSERT INTO chat_message(id,conversation_id,role,content,created_at) VALUES(?,?,?,?,?)",
+      first,
+      cid,
+      "user",
+      "前文",
+      Timestamp.from(Instant.now().minusSeconds(5))
+    );
+    db.update(
+      "INSERT INTO chat_message(id,conversation_id,role,content,created_at) VALUES(?,?,?,?,?)",
+      second,
+      cid,
+      "user",
+      "旧问题",
+      now()
+    );
+    var edited = ai.send(
+      student,
+      Map.of(
+        "conversationId",
+        cid,
+        "editMessageId",
+        second,
+        "text",
+        "修改后的问题",
+        "photoIds",
+        List.of()
+      )
+    );
+    String branch = str(edited, "conversationId"),
+      run = str(edited, "runId");
+    assertNotEquals(cid, branch);
+    assertEquals(
+      2,
+      db.count("SELECT COUNT(*) FROM chat_message WHERE conversation_id=?", cid)
+    );
+    var rows = db.rows(
+      "SELECT content FROM chat_message WHERE conversation_id=? ORDER BY created_at,id",
+      branch
+    );
+    assertEquals(
+      List.of("前文", "修改后的问题"),
+      rows
+        .stream()
+        .map(m -> str(m, "content"))
+        .toList()
+    );
+    assertThrows(ApiError.class, () ->
+      ai.send(
+        other,
+        Map.of(
+          "conversationId",
+          cid,
+          "editMessageId",
+          second,
+          "text",
+          "越权修改"
+        )
+      )
+    );
+    db.update(
+      "UPDATE ai_run SET status='FAILED',error='upstream 429' WHERE id=?",
+      run
+    );
+    assertThrows(ApiError.class, () -> ai.retry(other, run));
+    var retry = ai.retry(student, run);
+    assertEquals(run, str(retry, "runId"));
+    assertEquals("QUEUED", str(ai.run(student, run), "status"));
+    assertEquals(
+      2,
+      db.count(
+        "SELECT COUNT(*) FROM chat_message WHERE conversation_id=?",
+        branch
+      )
+    );
+    assertThrows(ApiError.class, () -> ai.retry(student, run));
+  }
+
+  @Test
   void moduleUpdatesAreScopedAndAcknowledgementDoesNotHideNewChanges() {
     moduleUpdates.list(student);
     moduleUpdates.list(other);
@@ -105,7 +238,7 @@ class BusinessIntegrationTest {
     String cid = id(),
       rid = id();
     db.update(
-      "INSERT INTO conversation VALUES(?,?,?,?,?)",
+      "INSERT INTO conversation(id,user_id,title,created_at,updated_at) VALUES(?,?,?,?,?)",
       cid,
       student.id(),
       "借用回执",
@@ -582,7 +715,7 @@ class BusinessIntegrationTest {
       rid = id(),
       grant = "fixture-grant";
     db.update(
-      "INSERT INTO conversation VALUES(?,?,?,?,?)",
+      "INSERT INTO conversation(id,user_id,title,created_at,updated_at) VALUES(?,?,?,?,?)",
       cid,
       student.id(),
       "测试",
@@ -619,7 +752,7 @@ class BusinessIntegrationTest {
     String cid = id(),
       rid = id();
     db.update(
-      "INSERT INTO conversation VALUES(?,?,?,?,?)",
+      "INSERT INTO conversation(id,user_id,title,created_at,updated_at) VALUES(?,?,?,?,?)",
       cid,
       staff.id(),
       "实验室总结",

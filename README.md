@@ -1,5 +1,7 @@
 # 博仪实验室设备管理系统
 
+使用与验收：[使用与测试指南](使用与测试指南.md)（启动、四角色步骤、AI 功能、异常用例及开题报告逐项对应）。
+
 2026 年 11 月 4 日已统一项目名称并清理页面重复说明。[最新复查与未完成事项](docs/REVIEW_2026-11-04.md)区分实际通过、待验收与尚未实现的能力。
 
 Vue 3 业务工作台、Spring Boot 业务后端、Python 单 Agent 与维修知识库。支持学生预约借用、上传照片直接归还、故障工单处理、站内提醒和统计分析。AI 可查询设备、总结借还与工单、分析利用率，并通过授权工具提交预约、归还本人设备及报修。
@@ -16,14 +18,13 @@ macOS 首次使用可以双击 `setup-mac.command`，或执行 `bash run.sh setu
 
 ```sh
 bash run.sh check-env
-bash run.sh start          # 真实模型模式，模型缺配置时智能请求明确失败
-bash run.sh start --demo   # 显式演示模式，验证真实业务接口与数据库
+bash run.sh start          # 调用已配置的模型，缺少配置时明确提示
 bash run.sh status
 bash run.sh logs backend
 bash run.sh stop
 ```
 
-切换模式先停止再启动。停止项目保留 MySQL、Redis 和全部数据。脚本检测 PID、创建时间及命令身份，端口冲突不会杀其他项目进程。Windows 命令将 `bash run.sh` 换成 `run.bat`。
+停止项目保留 MySQL、Redis 和全部数据。脚本检测 PID、创建时间及命令身份，端口冲突不会杀其他项目进程。Windows 命令将 `bash run.sh` 换成 `run.bat`。
 
 需要 Java 21、Node.js 22.12+/24、Maven、Python 3.11+（推荐 3.12）、MySQL 8.x、Redis。Qdrant 1.15.5 自动下载并校验 SHA-256，支持指定本地可执行文件。前端、Python、Java 的依赖分别缓存，只有输入变化才重新安装或构建。
 
@@ -63,7 +64,7 @@ bash run.sh stop
 
 “系统管理 → 模型接入”只需配置一个聊天模型的基础地址、模型名称和密钥。密钥只写服务端，后台不原样回显，数据库中的模型密钥以 AES-GCM 加密；保管好项目原有 `AI_INTERNAL_KEY`，否则旧密钥无法解密。
 
-真实模式没有配置生成模型时，返回明确错误。演示模式不调用真实模型、不进行真实视觉识别，文字和向量是标注的合成结果；数据库、权限、归还动作、Qdrant 索引与检索链路仍真实执行。知识库统一使用关键词检索，不需要向量模型。检索结果交给聊天模型生成带来源的回答。真实模型效果仍需实际验证。
+AI 只调用已配置的聊天模型，不再提供演示回复或自动降级为预置回答。临时限流、网关失败和连接异常会最多自动重试 4 次，采用退避等待；密钥、权限与明确额度不足错误直接报告。配置缺失、限流和接口失败都会明确提示。旧对话中的预置回答保留并标为“历史预置回答”。知识库使用关键词检索，不需要向量模型；检索结果交给聊天模型生成带来源的回答。
 
 ## 业务操作
 
@@ -108,7 +109,7 @@ lab-equipment-ai/.venv/bin/python scripts/evaluate_ai.py --limit 30
 ```sh
 bash run.sh stop
 python3 scripts/backup.py
-bash run.sh start --demo
+bash run.sh start
 ```
 
 备份包含数据库、归还照片和知识原件，以及校验清单。恢复是独立显式命令，目标仅允许本项目命名的数据库，必须重复指定确认名称：

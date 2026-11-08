@@ -1,5 +1,8 @@
 import { reactive } from "vue";
 type Options = {
+  inputValue?: string;
+  inputLabel?: string;
+  singleLine?: boolean;
   confirmButtonText?: string;
   cancelButtonText?: string;
   inputValidator?: (value: string) => boolean | string;
@@ -10,6 +13,8 @@ export const dialogState = reactive({
   title: "",
   message: "",
   prompt: false,
+  singleLine: false,
+  inputLabel: "填写内容",
   value: "",
   error: "",
   confirmText: "确认",
@@ -30,7 +35,9 @@ function ask(
     title,
     message,
     prompt,
-    value: "",
+    singleLine: !!options.singleLine,
+    inputLabel: options.inputLabel || "填写内容",
+    value: options.inputValue || "",
     error: "",
     confirmText: options.confirmButtonText || "确认",
     cancelText: options.cancelButtonText || "取消",

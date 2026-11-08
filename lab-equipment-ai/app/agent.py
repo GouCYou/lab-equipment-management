@@ -166,49 +166,6 @@ async def real(payload, backend):
     raise ProviderError("本轮已达到工具预算，请缩小查询范围后重试")
 
 
-async def demo(payload, backend):
-    query = payload.get("query", "")
-    context = payload.get("context", {})
-    lab = context.get("labId", "")
-    lines = []
-    wants_return = any(w in query for w in ("归还", "还设备", "还了", "还一下"))
-    if payload.get("images") and wants_return:
-        data = await backend.call("query_loans", {"activeOnly": True, "onlyMine": True})
-        candidates = data.get("items", [])
-        selected = [x for x in candidates if x["id"] == context.get("returnLoanId") or x["assetNo"] in query]
-        selected = selected or (candidates if len(candidates) == 1 else [])
-        if len(selected) == 1:
-            result = await backend.call("return_loan", {"loanId": selected[0]["id"]})
-            lines.append(result.get("error") or f'已归还 {selected[0]["equipmentName"]}，照片已保存。')
-        else:
-            lines.append("请选择这张照片对应的借用设备。演示模式不进行真实图像识别。")
-    else:
-        handled = False
-        if any(w in query for w in ("利用率", "统计", "使用率")):
-            handled = True
-            data = await backend.call("get_statistics", {"days": 30, "labId": lab})
-            lines.append(data.get("error") or f'近30天：设备 {data.get("equipmentCount",0)} 台，实际借用 {data.get("loanCount",0)} 次，故障 {data.get("ticketCount",0)} 单，利用率 {data.get("utilization",0)}%。统计截至 {data.get("asOf","")}。')
-        if any(w in query for w in ("归还", "借还", "逾期", "我借", "未还")) or payload.get("images"):
-            handled = True
-            data = await backend.call("query_loans", {"activeOnly": "归还情况" not in query, "onlyMine": not set(payload.get("user", {}).get("roles", [])) & {"ADMIN", "LAB_STAFF"}, "labId": lab})
-            rows = data.get("items", [])
-            lines.append(data.get("error") or f'授权范围内找到 {data.get("total",len(rows))} 条借还记录，其中 {data.get("currentBorrowed",sum(x.get("returnedAt") is None for x in rows))} 条尚未归还、{data.get("overdue",sum(bool(x.get("overdue")) for x in rows))} 条逾期。可通过下方卡片上传照片归还。')
-        if any(w in query for w in ("工单", "报修", "追踪", "故障")):
-            handled = True
-            data = await backend.call("query_tickets", {"labId": lab})
-            rows = data.get("items", [])
-            lines.append(data.get("error") or f'找到 {data.get("total",len(rows))} 张工单，{data.get("openCount",sum(x.get("status") not in ("CLOSED","CANCELLED","REJECTED") for x in rows))} 张仍在处理中。点击卡片查看责任人与时间线。')
-        if any(w in query for w in ("知识", "说明书", "手册", "检查步骤", "维修建议")):
-            handled = True
-            data = await backend.call("search_knowledge", {"query": query})
-            lines.append(data.get("error") or ("检索到以下资料，演示模式仅展示原文依据。" if data.get("items") else "没有找到适用的已发布资料，请补充设备型号或上传说明书。"))
-        if not handled or any(w in query for w in ("可以借", "可借", "有什么设备", "设备列表")):
-            data = await backend.call("search_equipment", {"availableOnly": "借" in query, "labId": lab})
-            lines.append(data.get("error") or f'找到 {data.get("total",len(data.get("items",[])))} 台设备。可在卡片中申请借用，选择起止时间与用途；审批通过后由实验员发放。')
-    cards, citations = presentation(backend)
-    return {"text": "\n\n".join(lines), "cards": cards, "citations": citations, "mode": "demo"}
-
-
 class State(TypedDict):
     payload: dict
     result: dict
@@ -217,8 +174,7 @@ class State(TypedDict):
 async def execute_node(state):
     payload = state["payload"]
     backend = Backend(payload)
-    mode = payload.get("config", {}).get("AI_MODE", os.getenv("AI_MODE", "real"))
-    result = await (demo(payload, backend) if mode == "demo" else real(payload, backend))
+    result = await real(payload, backend)
     return {"result": result}
 
 

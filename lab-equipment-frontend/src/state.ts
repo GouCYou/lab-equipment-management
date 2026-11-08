@@ -1,3 +1,5 @@
+import { requestId } from "./request-id";
+import { relativeDate } from "./time";
 import { reactive } from "vue";
 import axios from "axios";
 import { ElMessage } from "element-plus";
@@ -101,7 +103,7 @@ export function changed() {
 export async function post(
   path: string,
   body: Row = {},
-  key: string = crypto.randomUUID(),
+  key: string = requestId(),
 ) {
   return (await api.post(path, body, { headers: { "Idempotency-Key": key } }))
     .data;
@@ -167,15 +169,7 @@ export function label(value: string) {
   return labels[value] || value;
 }
 export function date(value: unknown, full = true) {
-  if (!value) return "—";
-  const d = new Date(String(value));
-  if (Number.isNaN(d.getTime())) return String(value);
-  return new Intl.DateTimeFormat("zh-CN", {
-    timeZone: "Asia/Shanghai",
-    month: "2-digit",
-    day: "2-digit",
-    ...(full ? { hour: "2-digit", minute: "2-digit" } : {}),
-  }).format(d);
+  return relativeDate(value, full);
 }
 export function statusClass(s: string) {
   if (

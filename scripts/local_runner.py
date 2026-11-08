@@ -709,7 +709,7 @@ def start(env, mode=None):
         p = ports(env)
         knowledge = STATE / 'knowledge'
         knowledge.mkdir(exist_ok=True)
-        mode = mode or env.get('AI_MODE', 'real')
+        mode = 'real'
         settings = dict(env, AI_MODE=mode, KNOWLEDGE_DIR=str(knowledge),
                         BACKEND_INTERNAL_URL=f'http://127.0.0.1:{p["backend"]}',
                         QDRANT_URL=f'http://127.0.0.1:{p["qdrant"]}', AI_BASE_URL=f'http://127.0.0.1:{p["ai"]}',
@@ -919,7 +919,7 @@ def show_logs(env, service=None):
         print(f'\n[{LABELS[name]}]\n{log_tail(name, env)}')
 
 
-def perform(command, demo=False, service=None):
+def perform(command, service=None):
     if command in ('status', 'logs'):
         env = config(initialize=False)
         return status(env) if command == 'status' else show_logs(env, service)
@@ -928,7 +928,7 @@ def perform(command, demo=False, service=None):
             command = 'stop' if any(alive(name) for name in APP_ORDER) else 'start'
         env = config(initialize=command == 'start')
         if command == 'start':
-            start(env, 'demo' if demo else None)
+            start(env, 'real')
         else:
             stop()
             status(env)
@@ -1050,7 +1050,7 @@ def show_accounts(env):
     print('\n学生、实验员和维修人员账户由演示数据初始化。')
 
 
-def menu(demo=False):
+def menu():
     attempted_mutation = False
     while True:
         env = config(initialize=False)
@@ -1079,10 +1079,10 @@ def menu(demo=False):
                 attempted_mutation = True
                 clear_menu_screen()
                 if running:
-                    perform('stop', demo=demo)
+                    perform('stop')
                 else:
                     with installation_display(env,environment,dependencies):
-                        perform('start',demo=demo)
+                        perform('start')
                 wait_for_menu_return()
             elif choice == str(len(options)):
                 clear_menu_screen()
@@ -1117,20 +1117,19 @@ def main():
     parser = argparse.ArgumentParser(description='本地前后端启停；MySQL、Redis 为常驻服务')
     parser.add_argument('command', nargs='?', choices=['menu', 'toggle', 'start', 'stop', 'status', 'logs', 'accounts'], default='menu')
     parser.add_argument('service', nargs='?', choices=APP_ORDER)
-    parser.add_argument('--demo', action='store_true', help='显式使用演示模式')
     args = parser.parse_args()
     COLOR = enable_ansi()
     if args.command == 'accounts':
         show_accounts(config(initialize=False))
     elif args.command == 'menu':
-        menu(args.demo)
+        menu()
     else:
         if args.command in ('start','toggle') and sys.stdout.isatty():
             env=config(initialize=False)
             with installation_display(env,inspect_environment(env),inspect_project_dependencies(env)):
-                perform(args.command,args.demo,args.service)
+                perform(args.command,args.service)
         else:
-            perform(args.command, args.demo, args.service)
+            perform(args.command, args.service)
 
 
 if __name__ == '__main__':

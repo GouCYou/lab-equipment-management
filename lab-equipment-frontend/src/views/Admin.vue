@@ -257,13 +257,6 @@ onMounted(load);
         @submit.prevent="saveModels"
         class="form-stack model-settings"
       >
-        <div class="mode-strip">
-          <Icon name="spark" /><span
-            >当前模式：{{
-              models.AI_MODE === "demo" ? "演示模式" : "真实模型"
-            }}</span
-          ><span class="muted">模式切换在启动菜单中完成。</span>
-        </div>
         <section class="panel settings-card form-stack">
           <h2>对话模型</h2>
           <label

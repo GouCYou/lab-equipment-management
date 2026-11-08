@@ -56,8 +56,6 @@ def split(parts, version_id, size=700, overlap=100):
 
 def collection(config):
     base = os.getenv("QDRANT_COLLECTION", "lab_equipment_knowledge")
-    if config.get("AI_MODE", os.getenv("AI_MODE", "real")) == "demo":
-        return base + "_demo"
     fingerprint = hashlib.sha256(config.get("EMBEDDING_MODEL", "").encode()).hexdigest()[:10]
     return base + "_" + fingerprint
 

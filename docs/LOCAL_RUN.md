@@ -20,10 +20,9 @@
 | SEED_ADMIN_USERNAME / SEED_ADMIN_PASSWORD | 首次初始化管理员，已有账户保留 |
 | SEED_DEMO_DATA | 明确设 true 才在空实验室库初始化演示数据 |
 | SEED_DEMO_PASSWORD | 演示账户密码，默认 123456 |
-| AI_MODE | real 或显式 demo，切换需停止后启动 |
 | AI_INTERNAL_KEY | 内部鉴权及模型密钥加密根密钥；必须妥善备份 |
 
-模型可以在管理后台热保存；也可设置 GENERATION_BASE_URL、GENERATION_MODEL、GENERATION_API_KEY 及独立的 EMBEDDING 三项。后台保存优先于环境中的模型值。基础地址填写到 `/v1` 等供应商要求的根路径，不带 `/chat/completions` 或 `/embeddings`。
+模型可以在管理后台热保存；也可设置 GENERATION_BASE_URL、GENERATION_MODEL、GENERATION_API_KEY。后台保存优先于环境中的模型值。基础地址填写到 `/v1` 等供应商要求的根路径，不带 `/chat/completions`。
 
 ## 环境安装
 
@@ -37,7 +36,7 @@ Windows/Linux 支持服务检测、已注册数据库服务启动、依赖安装
 
 打开菜单和 status 是只读；选择启动才会生成缺失配置、安装依赖、构建和创建指定数据库。停止保留 MySQL/Redis，失败只回收本轮新启进程。端口被他人占用直接报告，不按端口杀进程。
 
-当前启动模式可通过 `bash run.sh status` 查看；真实模式缺模型不会输出伪造建议，demo 也不会隐藏标识。模型请求失败不影响已启动的人工借还、工单和统计功能。
+AI 只调用已配置的聊天模型；缺少配置时明确提示，不生成预置回复。模型请求失败不影响已启动的人工借还、工单和统计功能。
 
 2026-11-04 环境检测修正：macOS `check-env` 和安装检查复用项目已有的 Python 3.12 虚拟环境，也接受导出的 `LOCAL_AI_PYTHON`；没有全局 `python3.12` 同名命令时不再误报。
 

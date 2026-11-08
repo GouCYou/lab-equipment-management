@@ -15,8 +15,9 @@ import type { Row } from "../state";
 import Icon from "../components/Icon.vue";
 import ThemePopover from "../components/ThemePopover.vue";
 import Badge from "../components/Badge.vue";
-import PhotoUpload from "../components/PhotoUpload.vue";
-import Photos from "../components/Photos.vue";
+import ChatComposer from "../components/ChatComposer.vue";
+import CopyMessage from "../components/CopyMessage.vue";
+import UserMessage from "../components/UserMessage.vue";
 import BusinessCard from "../components/BusinessCard.vue";
 const toolLabels: Record<string, string> = {
   search_equipment: "查询设备",
@@ -55,7 +56,9 @@ const history = ref<Row[]>([]),
   threadTitle = ref("新对话"),
   bottom = ref<HTMLElement>(),
   error = ref(""),
+  retrying = ref(false),
   ticketContext = ref<Row | null>(null);
+let pendingSend: { text: string; edited?: Row; photos?: Row[] } | null = null;
 let timer: ReturnType<typeof setTimeout> | undefined,
   generation = 0;
 const technician = computed(
@@ -134,6 +137,8 @@ async function scroll() {
   bottom.value?.scrollIntoView({ behavior: "smooth", block: "end" });
 }
 async function load() {
+  pendingSend = null;
+  retrying.value = false;
   clearTimeout(timer);
   const g = ++generation;
   error.value = "";
@@ -178,7 +183,7 @@ async function load() {
     } else {
       busy.value = false;
       if (failed && ["FAILED", "INTERRUPTED"].includes(failed.status)) {
-        error.value = failed.error;
+        error.value = "请求失败";
         currentRun.value = failed;
       }
     }
@@ -199,8 +204,8 @@ async function poll(id: string, g: number) {
       return;
     }
     busy.value = false;
-    if (data.status !== "SUCCEEDED")
-      error.value = data.error || "本次执行未完成";
+    retrying.value = false;
+    if (data.status !== "SUCCEEDED") error.value = "请求失败";
     const detail = (await api.get("/conversations/" + route.query.id)).data;
     if (g !== generation) return;
     messages.value = detail.messages;
@@ -211,26 +216,57 @@ async function poll(id: string, g: number) {
   } catch (e) {
     if (g !== generation) return;
     busy.value = false;
-    error.value = "查询执行状态失败，重新打开对话可继续查看结果";
-    fail(e);
+    retrying.value = false;
+    error.value = "请求失败";
   }
 }
-async function send(text = draft.value) {
-  if (busy.value || (!text.trim() && !photos.value.length)) return;
+async function send(text = draft.value, edited?: Row) {
+  if (
+    busy.value ||
+    (!text.trim() && !(edited?.attachments?.length || photos.value.length))
+  )
+    return;
+  const selectedPhotos = edited
+    ? edited.attachments || []
+    : photos.value.map((p) => p.id);
+  const context: Row = edited?.contextJson ? { ...edited.contextJson } : {};
+  if (labId.value) context.labId = labId.value;
+  if (ticketContext.value) context.ticketId = ticketContext.value.id;
+  pendingSend = { text, edited, photos: [...photos.value] };
   busy.value = true;
+  retrying.value = false;
   error.value = "";
+  currentRun.value = null;
+  clearTimeout(timer);
+  ++generation;
+  const existing = messages.value.filter((m) => !m.pending);
+  const index = edited ? existing.findIndex((m) => m.id === edited.id) : -1;
+  messages.value = [
+    ...(edited && index >= 0 ? existing.slice(0, index) : existing),
+    {
+      ...(edited || {}),
+      id: edited?.id || "pending-user",
+      role: "user",
+      content: text.trim(),
+      attachments: selectedPhotos,
+      createdAt: edited?.createdAt || new Date().toISOString(),
+      pending: true,
+    },
+  ];
+  if (!edited) {
+    draft.value = "";
+    photos.value = [];
+  }
+  void scroll();
   try {
-    const context: Row = {};
-    if (labId.value) context.labId = labId.value;
-    if (ticketContext.value) context.ticketId = ticketContext.value.id;
     const data = await post("/chat", {
       conversationId: route.query.id || "",
       text: text.trim(),
-      photoIds: photos.value.map((p) => p.id),
+      photoIds: selectedPhotos,
+      ...(edited ? { editMessageId: edited.id } : {}),
       context,
     });
-    draft.value = "";
-    photos.value = [];
+    pendingSend = null;
     if (String(route.query.id || "") !== data.conversationId) {
       await router.replace({
         path: "/chat",
@@ -245,9 +281,67 @@ async function send(text = draft.value) {
     }
     await histories();
     await scroll();
-  } catch (e) {
+  } catch {
     busy.value = false;
-    fail(e);
+    error.value = "请求失败";
+  }
+}
+async function retry() {
+  if (busy.value) return;
+  if (pendingSend) {
+    photos.value = pendingSend.photos || [];
+    await send(pendingSend.text, pendingSend.edited);
+    return;
+  }
+  if (!currentRun.value?.id) {
+    await send();
+    return;
+  }
+  busy.value = true;
+  retrying.value = true;
+  error.value = "";
+  const g = ++generation;
+  try {
+    const data = ["QUEUED", "RUNNING"].includes(currentRun.value.status)
+      ? { runId: currentRun.value.id }
+      : await post(`/ai-runs/${currentRun.value.id}/retry`, {});
+    // Keep feedback visible even when the upstream service fails immediately.
+    await new Promise((resolve) => setTimeout(resolve, 650));
+    if (g !== generation) return;
+    void poll(data.runId, g);
+  } catch {
+    await new Promise((resolve) => setTimeout(resolve, 650));
+    if (g !== generation) return;
+    busy.value = false;
+    retrying.value = false;
+    error.value = "请求失败";
+  }
+}
+async function historyAction(action: string, c: Row) {
+  if (action === "delete") {
+    await remove(c.id);
+    return;
+  }
+  try {
+    if (action === "pin") {
+      await api.patch(`/conversations/${c.id}`, { pinned: !c.pinnedAt });
+    } else if (action === "rename") {
+      const { value } = await ElMessageBox.prompt("", "重命名对话", {
+        inputValue: c.title,
+        inputLabel: "对话标题",
+        singleLine: true,
+        confirmButtonText: "保存",
+        inputValidator: (value) =>
+          (value.trim().length > 0 && value.trim().length <= 100) ||
+          "标题需为 1 至 100 个字",
+      });
+      const title = value.trim();
+      await api.patch(`/conversations/${c.id}`, { title });
+      if (route.query.id === c.id) threadTitle.value = title;
+    }
+    await histories();
+  } catch (e) {
+    if (e !== "cancel" && e !== "close") fail(e);
   }
 }
 async function remove(id: string) {
@@ -269,12 +363,6 @@ function fresh() {
   photos.value = [];
   void router.push("/chat");
   if (!route.query.id) void load();
-}
-function key(event: KeyboardEvent) {
-  if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
-    event.preventDefault();
-    void send();
-  }
 }
 watch(
   () => [route.query.id, route.query.ticket, route.query.ask],
@@ -318,14 +406,40 @@ onBeforeUnmount(() => {
           :class="{ selected: route.query.id === c.id }"
         >
           <button @click="router.push({ path: '/chat', query: { id: c.id } })">
-            {{ c.title }}</button
-          ><button
-            class="history-delete icon-button"
-            aria-label="删除对话"
-            @click="remove(c.id)"
-          >
-            <Icon name="delete" :size="15" />
+            {{ c.title }}
           </button>
+          <Icon v-if="c.pinnedAt" name="pin" :size="13" class="history-pin" />
+          <ThemePopover
+            :width="176"
+            :items="[
+              {
+                id: 'pin',
+                label: c.pinnedAt ? '取消置顶' : '置顶',
+                icon: 'pin',
+              },
+              { id: 'rename', label: '重命名', icon: 'edit' },
+              {
+                id: 'delete',
+                label: '删除',
+                icon: 'delete',
+                divider: true,
+                danger: true,
+              },
+            ]"
+            label="对话操作"
+            @select="historyAction($event, c)"
+          >
+            <template #trigger="{ toggle, open }">
+              <button
+                class="history-more icon-button"
+                :class="{ open }"
+                :aria-label="'对话操作：' + c.title"
+                @click.stop="toggle"
+              >
+                <Icon name="more" :size="20" />
+              </button>
+            </template>
+          </ThemePopover>
         </div>
       </div>
     </aside>
@@ -350,19 +464,30 @@ onBeforeUnmount(() => {
             @click="historyOpen = !historyOpen"
           >
             <Icon name="clock" /></button
-          ><span>{{ threadTitle }}</span
-          ><span v-if="currentRun?.mode === 'demo'" class="demo-label"
-            >演示模式</span
-          >
+          ><span>{{ threadTitle }}</span>
         </div>
-        <button
-          class="icon-button"
-          :class="{ active: workOpen }"
-          aria-label="切换工作区"
-          @click="workOpen = !workOpen"
-        >
-          <Icon name="filter" />
-        </button>
+        <div class="chat-header-controls">
+          <select
+            v-model="labId"
+            class="chat-scope-select"
+            aria-label="当前实验室"
+          >
+            <option value="">
+              {{ staff() ? "授权实验室" : "全部实验室" }}
+            </option>
+            <option v-for="l in state.labs" :key="l.id" :value="l.id">
+              {{ l.name }}
+            </option>
+          </select>
+          <button
+            class="icon-button"
+            :class="{ active: workOpen }"
+            aria-label="切换工作区"
+            @click="workOpen = !workOpen"
+          >
+            <Icon name="filter" />
+          </button>
+        </div>
       </header>
       <div class="conversation-scroll" v-loading="loading">
         <div v-if="!messages.length" class="welcome">
@@ -393,15 +518,14 @@ onBeforeUnmount(() => {
             class="message"
             :class="m.role"
           >
-            <div v-if="m.role === 'user'" class="user-bubble">
-              <p v-if="m.content">{{ m.content }}</p>
-              <Photos :ids="m.attachments" />
-            </div>
-            <template v-else
-              ><div class="assistant-label">
-                <span class="mini-mark"><Icon name="lab" :size="16" /></span
-                >博仪<span v-if="m.mode === 'demo'"> · 演示模式</span>
-              </div>
+            <UserMessage
+              v-if="m.role === 'user'"
+              :content="m.content || ''"
+              :attachments="m.attachments || []"
+              :disabled="busy"
+              @resend="send($event, m)"
+            />
+            <template v-else>
               <div class="markdown" v-html="markdown.render(answerText(m))" />
               <div v-if="m.cards?.length" class="business-cards">
                 <BusinessCard
@@ -424,10 +548,13 @@ onBeforeUnmount(() => {
                   </summary>
                   <p>{{ citation.excerpt }}</p>
                 </details>
-              </div></template
-            >
+              </div>
+              <div class="message-actions">
+                <CopyMessage :content="answerText(m)" />
+              </div>
+            </template>
           </article>
-          <div v-if="busy" class="thinking">
+          <div v-if="busy && !retrying" class="thinking">
             <Icon name="loading" class="spin" :size="17" /><span>{{
               currentRun?.events?.at(-1)?.toolName
                 ? "正在" +
@@ -437,92 +564,50 @@ onBeforeUnmount(() => {
                 : "正在查询与处理…"
             }}</span>
           </div>
-          <div v-if="error" class="inline-error">
-            <strong>本次未完成</strong>
-            <p>{{ error }}</p>
-            <button
-              class="text-button"
-              @click="
-                draft =
-                  messages.filter((m) => m.role === 'user').at(-1)?.content ||
-                  ''
-              "
+          <div v-if="retrying" class="regenerating-status" role="status">
+            <Icon name="loading" class="agent-spinner" :size="16" /><span
+              >重新生成中</span
             >
-              重新填写
-            </button>
+          </div>
+          <div v-else-if="error && !busy" class="conversation-error">
+            <el-alert
+              title="本次回复未完成"
+              type="error"
+              show-icon
+              :closable="false"
+            />
+            <div class="message-actions">
+              <button
+                class="icon-button"
+                aria-label="重新生成回复"
+                title="重试"
+                :disabled="busy"
+                @click="retry"
+              >
+                <Icon name="retry" :size="17" />
+              </button>
+            </div>
           </div>
         </div>
         <div ref="bottom" />
       </div>
-      <div class="composer-area">
-        <div v-if="ticketContext" class="context-chip">
-          <Icon name="ticket" :size="16" />{{ ticketContext.ticketNo }} ·
-          {{ ticketContext.title
-          }}<button
-            class="icon-button"
-            aria-label="清除工单上下文"
-            @click="ticketContext = null"
-          >
-            <Icon name="close" :size="14" />
-          </button>
-        </div>
-        <div class="composer">
-          <div v-if="photos.length" class="composer-photos">
-            <span v-for="p in photos" :key="p.id"
-              ><img :src="p.url" :alt="p.name" /><button
-                aria-label="移除图片"
-                @click="photos = photos.filter((x) => x.id !== p.id)"
-              >
-                <Icon name="close" :size="14" /></button
-            ></span>
-          </div>
-          <textarea
-            v-model="draft"
-            aria-label="给博仪发送消息"
-            :disabled="busy"
-            :placeholder="
-              messages.length
-                ? '继续说说你想做什么…'
-                : technician
-                  ? '描述故障，或查询待处理工单…'
-                  : '问问有什么设备可借，或上传归还照片…'
-            "
-            @keydown="key"
-            rows="1"
-          />
-          <div class="composer-toolbar">
-            <ThemePopover
-              placement="top-start"
-              :width="340"
-              label="添加设备图片"
-              ><PhotoUpload v-model="photos" /><template
-                #trigger="{ toggle, open }"
-                ><button
-                  class="icon-button"
-                  aria-label="添加设备图片"
-                  :disabled="busy"
-                  :aria-expanded="open"
-                  @click="toggle"
-                >
-                  <Icon name="attach" /></button></template></ThemePopover
-            ><select v-model="labId" aria-label="当前实验室">
-              <option value="">
-                {{ staff() ? "授权实验室" : "全部实验室" }}
-              </option>
-              <option v-for="l in state.labs" :key="l.id" :value="l.id">
-                {{ l.name }}
-              </option></select
-            ><button
-              class="send-button"
-              aria-label="发送消息"
-              :disabled="busy || (!draft.trim() && !photos.length)"
-              @click="send()"
-            >
-              <Icon :name="busy ? 'loading' : 'send'" :class="{ spin: busy }" />
-            </button>
-          </div>
-        </div>
+      <div v-if="ticketContext" class="context-chip chat-ticket-context">
+        <Icon name="ticket" :size="16" />{{ ticketContext.ticketNo }} ·
+        {{ ticketContext.title
+        }}<button
+          class="icon-button"
+          aria-label="清除工单上下文"
+          @click="ticketContext = null"
+        >
+          <Icon name="close" :size="14" />
+        </button>
       </div>
+      <ChatComposer
+        v-model="draft"
+        v-model:photos="photos"
+        :busy="busy"
+        @send="send()"
+      />
     </section>
     <aside class="work-panel" :aria-hidden="!workOpen" :inert="!workOpen">
       <header>
@@ -539,7 +624,7 @@ onBeforeUnmount(() => {
         <h4>本次执行</h4>
         <div v-if="currentRun" class="run-status">
           <Badge :value="currentRun.status" /><span>{{
-            currentRun.mode === "demo" ? "演示模式" : "真实模型"
+            currentRun.mode === "demo" ? "历史预置记录" : "模型服务"
           }}</span>
         </div>
         <p v-else class="muted">发送消息后，这里会展示实际工具调用。</p>

@@ -32,19 +32,19 @@ async def test_tool_parameters_do_not_contain_runtime_objects():
 
 
 @pytest.mark.asyncio
-async def test_ambiguous_photo_does_not_return_any_loan():
-    backend = FakeBackend([{"id":"a","assetNo":"LAB-1"},{"id":"b","assetNo":"LAB-2"}])
-    result = await agent.demo({"query":"归还设备","images":[{}],"context":{}},backend)
-    assert not any(name == "return_loan" for name,_ in backend.calls)
-    assert "请选择" in result["text"]
-
+async def test_legacy_mode_setting_still_calls_configured_model(monkeypatch):
+    calls=[]
+    async def model(config,messages,tools=None):
+        calls.append(config)
+        return {"role":"assistant","content":"真实接口结果"},{"total_tokens":5}
+    monkeypatch.setattr(agent,"chat",model)
+    result=await agent.run({"config":{"AI_MODE":"demo","GENERATION_MODEL":"test-model"},"query":"有什么设备","messages":[{"role":"user","content":"有什么设备"}]})
+    assert calls and result["mode"]=="real" and result["text"]=="真实接口结果"
 
 @pytest.mark.asyncio
-async def test_explicit_single_loan_photo_calls_authorized_return():
-    backend = FakeBackend([{"id":"a","assetNo":"LAB-1","equipmentName":"示波器"}])
-    result = await agent.demo({"query":"归还设备","images":[{}],"context":{}},backend)
-    assert ("return_loan", {"loanId":"a"}) in backend.calls
-    assert "已归还" in result["text"]
+async def test_legacy_mode_missing_config_reports_error():
+    with pytest.raises(ProviderError,match="配置"):
+        await agent.run({"config":{"AI_MODE":"demo"},"query":"归还设备","messages":[{"role":"user","content":"归还设备"}]})
 
 
 @pytest.mark.asyncio
@@ -71,12 +71,13 @@ async def test_permission_filter_is_applied_before_top_k(monkeypatch):
     async def fake_request(method,path,body=None,allow_missing=False):
         requests.append((method,path,body))
         return {} if method=="GET" else {"points":[]}
+    async def fake_embedding(*args):return [[1.0,0.0]]
+    monkeypatch.setattr(rag,"embeddings",fake_embedding)
     monkeypatch.setattr(rag,"qrequest",fake_request)
     await rag.search({"query":"开机故障","versionIds":["allowed-version"],"config":{"AI_MODE":"demo"}})
     body=requests[-1][2]
     assert body["filter"]["must"][0]["match"]["any"]==["allowed-version"]
     assert body["limit"]==6
-    assert "_demo" in requests[-1][1]
 
 
 def test_internal_endpoints_require_service_key(monkeypatch):

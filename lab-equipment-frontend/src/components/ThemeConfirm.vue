@@ -4,7 +4,7 @@ import { dialogState as dialog, finishDialog } from "../dialogs";
 import Icon from "./Icon.vue";
 const id = useId(),
   panel = ref<HTMLElement>(),
-  input = ref<HTMLTextAreaElement>();
+  input = ref<HTMLTextAreaElement | HTMLInputElement>();
 let previous: HTMLElement | null = null,
   overflow = "";
 function keys(e: KeyboardEvent) {
@@ -14,7 +14,7 @@ function keys(e: KeyboardEvent) {
   }
   if (e.key === "Tab" && panel.value) {
     const controls = [
-      ...panel.value.querySelectorAll<HTMLElement>("button,textarea"),
+      ...panel.value.querySelectorAll<HTMLElement>("button,input,textarea"),
     ];
     const first = controls[0],
       last = controls.at(-1);
@@ -77,12 +77,20 @@ onBeforeUnmount(() => document.removeEventListener("keydown", keys));
               <Icon name="close" />
             </button>
           </header>
-          <p>{{ dialog.message }}</p>
-          <textarea
-            v-if="dialog.prompt"
+          <p v-if="dialog.message">{{ dialog.message }}</p>
+          <input
+            v-if="dialog.prompt && dialog.singleLine"
             ref="input"
             v-model="dialog.value"
-            aria-label="填写原因"
+            type="text"
+            :aria-label="dialog.inputLabel"
+            maxlength="100"
+          />
+          <textarea
+            v-else-if="dialog.prompt"
+            ref="input"
+            v-model="dialog.value"
+            :aria-label="dialog.inputLabel"
             rows="3"
           />
           <p v-if="dialog.error" class="danger-text">{{ dialog.error }}</p>

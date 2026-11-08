@@ -65,7 +65,7 @@ class ControllerTests(unittest.TestCase):
                     patch.object(runner, 'status'), patch.object(runner, 'perform') as perform, \
                     patch.object(runner, 'read_menu_choice', side_effect=['1', '4']), contextlib.redirect_stdout(io.StringIO()):
                 runner.menu()
-                perform.assert_called_once_with('stop' if running else 'start', demo=False)
+                perform.assert_called_once_with('stop' if running else 'start')
 
     def test_menu_reports_failure_and_remains_available_for_cancel(self):
         output = io.StringIO()
@@ -132,7 +132,7 @@ class ControllerTests(unittest.TestCase):
     def test_default_cli_command_is_menu_not_toggle(self):
         with patch.object(sys, 'argv', ['local_runner.py']), patch.object(runner, 'menu') as menu, patch.object(runner, 'perform') as perform:
             runner.main()
-        menu.assert_called_once_with(False)
+        menu.assert_called_once_with()
         perform.assert_not_called()
 
     def test_posix_identity_is_independent_of_terminal_locale_width_and_timezone(self):

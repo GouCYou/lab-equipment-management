@@ -33,6 +33,10 @@ import {
   PhCaretDown,
   PhArrowLeft,
   PhShieldCheck,
+  PhPencilSimple,
+  PhCopy,
+  PhPushPin,
+  PhArrowClockwise,
 } from "@phosphor-icons/vue";
 const icons: Record<string, any> = {
   chat: PhChatsCircle,
@@ -68,6 +72,10 @@ const icons: Record<string, any> = {
   down: PhCaretDown,
   back: PhArrowLeft,
   shield: PhShieldCheck,
+  edit: PhPencilSimple,
+  copy: PhCopy,
+  pin: PhPushPin,
+  retry: PhArrowClockwise,
 };
 defineProps<{ name: string; size?: number }>();
 </script>

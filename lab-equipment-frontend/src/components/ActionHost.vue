@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { requestId } from "../request-id";
 import { ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import { actions, state, api, post, fail, changed } from "../state";
@@ -19,7 +20,7 @@ watch(
   async (kind) => {
     if (!kind) return;
     photos.value = [];
-    key.value = crypto.randomUUID();
+    key.value = requestId();
     const start = new Date();
     start.setSeconds(0, 0);
     start.setMinutes(Math.ceil((start.getMinutes() + 5) / 30) * 30);

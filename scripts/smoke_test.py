@@ -132,7 +132,7 @@ def main():
     assert response.status_code==503 and '配置' in response.json()['detail']
     assert httpx.post(os.environ['SMOKE_AI_URL']+'/internal/agent',json=payload).status_code==401
     passed('真实模式缺模型明确失败且不回退模拟；内部接口拒绝未授权')
-    report={'passed':True,'checks':checks,'count':len(checks),'mode':'demo','scope':'isolated lab_equipment_test; real MySQL Redis Qdrant HTTP; generated text and vectors are synthetic','timestamp':datetime.now(timezone.utc).isoformat()}
+    report={'passed':True,'checks':checks,'count':len(checks),'mode':'real-agent-with-local-test-provider','scope':'isolated lab_equipment_test; real MySQL Redis HTTP and real agent tool loop; local fixture model responses, not model quality evidence','timestamp':datetime.now(timezone.utc).isoformat()}
     args.report.parent.mkdir(parents=True,exist_ok=True);args.report.write_text(json.dumps(report,ensure_ascii=False,indent=2))
     print(f'{len(checks)} HTTP workflows passed; report: {args.report}')
 
