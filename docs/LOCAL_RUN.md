@@ -43,3 +43,5 @@ AI 只调用已配置的聊天模型；缺少配置时明确提示，不生成�
 2026-11-04 环境检测修正：macOS `check-env` 和安装检查复用项目已有的 Python 3.12 虚拟环境，也接受导出的 `LOCAL_AI_PYTHON`；没有全局 `python3.12` 同名命令时不再误报。
 
 菜单可选择“查看各角色账户”（macOS 第 7 项，Windows 第 7 项，Linux 第 6 项），或运行 `bash run.sh accounts` / `run.bat accounts`。默认用户名：admin、student、labstaff、technician；登录密码统一为 123456。
+
+Windows 安装故障详情同时保存在 `.runtime/windows/setup.log` 和 `.runtime/windows/install-error.txt`；管理员窗口的输出会在结束后回传主菜单，不再只显示退出码。

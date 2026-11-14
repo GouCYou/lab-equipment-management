@@ -34,26 +34,26 @@ function Find-Python {
     }
 }
 function Find-Jdk {
-    $homes = @($env:JAVA_HOME)
+    $jdkDirectories = @($env:JAVA_HOME)
     foreach ($base in @($env:ProgramFiles, $env:ProgramW6432, $env:LOCALAPPDATA)) {
         if (!$base) { continue }
         foreach ($vendor in @('Java','Eclipse Adoptium','Microsoft','Amazon Corretto','BellSoft','Programs/Eclipse Adoptium')) {
-            $homes += @(Get-ChildItem (Join-Path $base "$vendor/*") -Directory -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
+            $jdkDirectories += @(Get-ChildItem (Join-Path $base "$vendor/*") -Directory -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
         }
     }
     $javac = Get-Command javac.exe -ErrorAction SilentlyContinue
-    if ($javac) { $homes += Split-Path (Split-Path $javac.Source) }
+    if ($javac) { $jdkDirectories += Split-Path (Split-Path $javac.Source) }
     $valid = @()
-    foreach ($home in ($homes | Select-Object -Unique)) {
-        if (!$home -or !(Test-Path "$home/bin/javac.exe")) { continue }
+    foreach ($jdkDirectory in ($jdkDirectories | Select-Object -Unique)) {
+        if (!$jdkDirectory -or !(Test-Path "$jdkDirectory/bin/javac.exe")) { continue }
         $ErrorActionPreference = 'Continue'
-        $text = (& "$home/bin/java.exe" -version 2>&1 | Out-String)
+        $text = (& "$jdkDirectory/bin/java.exe" -version 2>&1 | Out-String)
         $code = $LASTEXITCODE
         $ErrorActionPreference = 'Stop'
         if ($code -eq 0 -and $text -match 'version "([0-9]+)(?:\.([0-9]+))?(?:\.([0-9]+))?') {
             if ([int]$Matches[1] -ge 21) {
                 $version = [version]("{0}.{1}.{2}" -f $Matches[1], [int]$Matches[2], [int]$Matches[3])
-                $valid += [pscustomobject]@{Home=$home; Version=$version}
+                $valid += [pscustomobject]@{Home=$jdkDirectory; Version=$version}
             }
         }
     }
@@ -75,15 +75,29 @@ function Expand-Package([string]$Url, [string]$Directory) {
     return $target
 }
 
+$transcriptStarted = $false
+$setupLog = Join-Path $state 'setup.log'
+$errorFile = Join-Path $state 'install-error.txt'
 try {
     if (!$BootstrapOnly) {
         $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
         if (!(New-Object Security.Principal.WindowsPrincipal($identity)).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+            if (Test-Path $setupLog) { Remove-Item -Force $setupLog }
+            if (Test-Path $errorFile) { Remove-Item -Force $errorFile }
+            Write-Host 'Windows will request administrator permission. Installation progress appears in that window.'
             $child = Start-Process powershell.exe -Verb RunAs -Wait -PassThru -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`""
+            if (Test-Path $setupLog) { Get-Content -Raw -Encoding UTF8 $setupLog | Write-Output }
+            if ($child.ExitCode -ne 0) {
+                if (Test-Path $errorFile) { Get-Content -Raw -Encoding UTF8 $errorFile | Write-Output }
+                else { Write-Host "Elevated installer exited with code $($child.ExitCode). Log: $setupLog" }
+            }
             exit $child.ExitCode
         }
         if ($env:PROCESSOR_ARCHITECTURE -ne 'AMD64') { throw 'This installer requires Windows x64.' }
     }
+    Start-Transcript -Path $setupLog -Force | Out-Null
+    $transcriptStarted = $true
+    if (Test-Path $errorFile) { Remove-Item -Force $errorFile }
     Refresh-Path
     $python = Find-Python
     if (!$python) { Install-Package 'Python.Python.3.12'; $python = Find-Python }
@@ -132,8 +146,12 @@ try {
             [IO.File]::WriteAllText($ini, $content, (New-Object Text.UTF8Encoding($false)))
         }
         if (!(Test-Path "$data\mysql")) {
+            # MySQL writes progress to stderr even when initialization succeeds (Windows PowerShell 5.1).
+            $ErrorActionPreference = 'Continue'
             & "$mysqlBin\mysqld.exe" "--defaults-file=$ini" --initialize-insecure --console
-            if ($LASTEXITCODE -ne 0) { throw 'MySQL initialization failed; existing data has been preserved.' }
+            $mysqlExitCode = $LASTEXITCODE
+            $ErrorActionPreference = 'Stop'
+            if ($mysqlExitCode -ne 0) { throw 'MySQL initialization failed; existing data has been preserved.' }
         }
         & "$mysqlBin\mysqld.exe" --install BoyiMySQL "--defaults-file=$ini"
         if ($LASTEXITCODE -ne 0) { throw 'MySQL service registration failed.' }
@@ -161,6 +179,10 @@ try {
     [IO.File]::WriteAllText((Join-Path $state 'environment.json'), ($manifest | ConvertTo-Json), (New-Object Text.UTF8Encoding($false)))
     Write-Host 'Runtime installation complete. Project dependencies will be installed next.'
 } catch {
-    Write-Host "Installation failed: $($_.Exception.Message)" -ForegroundColor Red
+    $failure = "Installation failed: $($_.Exception.Message)`r`n$($_.InvocationInfo.PositionMessage)`r`n$($_.ScriptStackTrace)"
+    [IO.File]::WriteAllText($errorFile, $failure, (New-Object Text.UTF8Encoding($false)))
+    Write-Host $failure -ForegroundColor Red
     exit 1
+} finally {
+    if ($transcriptStarted) { Stop-Transcript | Out-Null }
 }
