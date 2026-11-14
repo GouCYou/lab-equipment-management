@@ -214,18 +214,6 @@ public class Business {
       now()
     );
     db.event("RESERVATION", id, "提交预约", u.id(), "等待实验员审核");
-    for (var s : db.rows(
-      "SELECT user_id FROM lab_staff_scope WHERE lab_id=?",
-      e.get("labId")
-    ))
-      db.notify(
-        str(s, "userId"),
-        "新的设备预约",
-        u.name() + "申请借用" + e.get("name"),
-        "RESERVATION",
-        id,
-        id + ":new"
-      );
     var result = q.reservation(u, id);
     remember(u, "reserve", key, b, result);
     return result;
@@ -284,14 +272,6 @@ public class Business {
       id
     );
     db.event("RESERVATION", id, next, u.id(), str(b, "reason"));
-    db.notify(
-      str(r, "userId"),
-      "预约状态更新",
-      e.get("name") + "：" + statusName(next),
-      "RESERVATION",
-      id,
-      id + ":" + next
-    );
     return q.reservation(u, id);
   }
 
@@ -352,14 +332,6 @@ public class Business {
     );
     db.event("LOAN", id, "实物发放", u.id(), "已核对设备与借用人");
     db.event("RESERVATION", rid, "已发放", u.id(), id);
-    db.notify(
-      str(r, "userId"),
-      "设备已借出",
-      e.get("name") + "，请按时归还",
-      "LOAN",
-      id,
-      id + ":issue"
-    );
     var result = q.loan(u, id);
     remember(u, "issue", key, body, result);
     return result;
@@ -391,26 +363,6 @@ public class Business {
       lid
     );
     db.event("LOAN", lid, "照片归还", u.id(), str(b, "note"));
-    db.notify(
-      u.id(),
-      "设备归还成功",
-      "归还照片已保存，实验员可进行后续检查",
-      "LOAN",
-      lid,
-      lid + ":return"
-    );
-    for (var s : db.rows(
-      "SELECT user_id FROM lab_staff_scope WHERE lab_id=?",
-      loan.get("labId")
-    ))
-      db.notify(
-        str(s, "userId"),
-        "设备已归还，待检查",
-        u.name() + "已提交设备归还照片",
-        "LOAN",
-        lid,
-        lid + ":check"
-      );
     var result = q.loan(u, lid);
     if (bool(b.get("damaged"))) {
       Map<String, Object> t = new HashMap<>();
@@ -543,14 +495,6 @@ public class Business {
         r.get("id")
       );
       db.event("RESERVATION", str(r, "id"), "设备禁借导致失效", u.id(), reason);
-      db.notify(
-        str(r, "userId"),
-        "预约因设备异常失效",
-        reason,
-        "RESERVATION",
-        str(r, "id"),
-        r.get("id") + ":invalidated"
-      );
     }
   }
 
@@ -596,18 +540,6 @@ public class Business {
       now()
     );
     db.event("TICKET", id, "提交报修", u.id(), str(b, "description"));
-    for (var s : db.rows(
-      "SELECT user_id FROM lab_staff_scope WHERE lab_id=?",
-      e.get("labId")
-    ))
-      db.notify(
-        str(s, "userId"),
-        "新的设备报修",
-        str(b, "title"),
-        "TICKET",
-        id,
-        id + ":new"
-      );
     return q.ticket(u, id);
   }
 
@@ -679,14 +611,6 @@ public class Business {
           id
         );
         next = "ASSIGNED";
-        db.notify(
-          assignee,
-          "新的维修工单",
-          str(t, "title"),
-          "TICKET",
-          id,
-          id + ":assign:" + Db.id()
-        );
       }
       case "note" -> {
         require(
@@ -736,16 +660,12 @@ public class Business {
           require(status.equals("REPAIRING"), "请先开始维修");
           String resolution = required(b, "resolution", 4000);
           int minutes = ((Number) b.getOrDefault("laborMinutes", 0)).intValue();
-          double cost = (
-            (Number) b.getOrDefault("costAmount", 0)
-          ).doubleValue();
-          require(minutes >= 0 && cost >= 0, "工时和费用不能为负数");
+          require(minutes >= 0, "工时不能为负数");
           next = "PENDING_ACCEPTANCE";
           db.update(
-            "UPDATE fault_ticket SET resolution=?,labor_minutes=labor_minutes+?,cost_amount=cost_amount+?,repair_submitted_at=? WHERE id=?",
+            "UPDATE fault_ticket SET resolution=?,labor_minutes=labor_minutes+?,repair_submitted_at=? WHERE id=?",
             resolution,
             minutes,
-            cost,
             now(),
             id
           );
@@ -781,40 +701,8 @@ public class Business {
       id
     );
     db.event("TICKET", id, action + " → " + next, u.id(), note);
-    db.notify(
-      str(t, "reporterId"),
-      "工单进度更新",
-      t.get("title") + "：" + statusName(next),
-      "TICKET",
-      id,
-      id + ":" + Db.id()
-    );
     db.audit(u.id(), "TICKET_" + action, id, note);
     return q.ticket(u, id);
-  }
-
-  @Scheduled(fixedDelay = 60000)
-  public void reminders() {
-    try {
-      for (var l : db.rows(
-        "SELECT * FROM loan_record WHERE returned_at IS NULL AND due_at<DATE_ADD(UTC_TIMESTAMP(3),INTERVAL 24 HOUR)"
-      )) {
-        boolean overdue = Instant.parse(str(l, "dueAt")).isBefore(
-          Instant.now()
-        );
-        db.notify(
-          str(l, "userId"),
-          overdue ? "设备已逾期" : "设备即将到期",
-          "请上传归还照片并完成归还",
-          "LOAN",
-          str(l, "id"),
-          l.get("id") +
-            ":" +
-            (overdue ? "overdue:" : "due:") +
-            LocalDate.now(ZoneId.of("Asia/Shanghai"))
-        );
-      }
-    } catch (Exception ignored) {}
   }
 
   @Transactional

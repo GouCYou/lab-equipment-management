@@ -45,5 +45,5 @@
   "count": 10,
   "mode": "real-agent-with-local-test-provider",
   "scope": "isolated lab_equipment_test; real MySQL Redis HTTP and real agent tool loop; local fixture model responses, not model quality evidence",
-  "timestamp": "2026-11-08T02:11:09.539773+00:00"
+  "timestamp": "2026-11-14T06:03:02.992095+00:00"
 }

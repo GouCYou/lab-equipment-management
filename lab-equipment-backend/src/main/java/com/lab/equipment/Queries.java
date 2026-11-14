@@ -185,13 +185,6 @@ public class Queries {
     );
   }
 
-  List<Map<String, Object>> notifications(User u) {
-    return db.rows(
-      "SELECT * FROM notification WHERE user_id=? ORDER BY created_at DESC LIMIT 150",
-      u.id()
-    );
-  }
-
   Map<String, Object> dashboard(User u) {
     var eq = equipment(u, "", "", "", false);
     var loans = loans(u, false);

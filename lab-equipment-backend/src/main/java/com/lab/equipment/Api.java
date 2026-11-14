@@ -294,32 +294,6 @@ public class Api {
     return moduleUpdates.read(auth.current(), module, body);
   }
 
-  @GetMapping("/notifications")
-  Object notifications() {
-    return q.notifications(auth.current());
-  }
-
-  @PostMapping("/notifications/read-all")
-  Object readAll() {
-    db.update(
-      "UPDATE notification SET read_at=? WHERE user_id=? AND read_at IS NULL",
-      now(),
-      auth.current().id()
-    );
-    return Map.of("ok", true);
-  }
-
-  @PostMapping("/notifications/{id}/read")
-  Object read(@PathVariable String id) {
-    db.update(
-      "UPDATE notification SET read_at=? WHERE id=? AND user_id=?",
-      now(),
-      id,
-      auth.current().id()
-    );
-    return Map.of("ok", true);
-  }
-
   @GetMapping("/statistics")
   Object stats(
     @RequestParam(defaultValue = "30") int days,

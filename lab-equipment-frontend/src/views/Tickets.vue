@@ -91,7 +91,6 @@ async function choose(action: string) {
     note: "",
     resolution: "",
     laborMinutes: 0,
-    costAmount: 0,
     passed: true,
   };
   if (action === "assign")
@@ -291,8 +290,8 @@ onMounted(() => {
           <dd>{{ date(detail.createdAt) }}</dd>
           <dt>维修人员</dt>
           <dd>{{ detail.assigneeName || "尚未分派" }}</dd>
-          <dt>工时 / 费用</dt>
-          <dd>{{ detail.laborMinutes }} 分钟 / ¥{{ detail.costAmount }}</dd>
+          <dt>累计工时</dt>
+          <dd>{{ detail.laborMinutes }} 分钟</dd>
         </dl>
         <section class="detail-section">
           <h3>故障描述</h3>
@@ -409,19 +408,11 @@ onMounted(() => {
               maxlength="4000"
               placeholder="记录检查步骤、故障原因、处理方法和验证结果"
           /></label>
-          <div class="form-pair">
-            <label
-              >本次工时（分钟）<el-input-number
-                v-model="form.laborMinutes"
-                :min="0"
-                :max="100000" /></label
-            ><label
-              >本次费用（元）<el-input-number
-                v-model="form.costAmount"
-                :min="0"
-                :precision="2"
-                :max="1000000"
-            /></label></div></template
+          <label
+            >本次工时（分钟）<el-input-number
+              v-model="form.laborMinutes"
+              :min="0"
+              :max="100000" /></label></template
         ><label v-if="dialog === 'acceptance'"
           >验收结果<el-radio-group v-model="form.passed"
             ><el-radio :value="true">通过并关闭</el-radio

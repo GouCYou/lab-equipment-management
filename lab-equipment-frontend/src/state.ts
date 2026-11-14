@@ -10,7 +10,6 @@ export const state = reactive({
   ready: false,
   labs: [] as Row[],
   categories: [] as Row[],
-  unread: 0,
   moduleUpdates: {} as Record<string, { fingerprint: string; unread: boolean }>,
   revision: 0,
   mode: "real",
@@ -44,16 +43,14 @@ export async function login(username: string, password: string) {
   await metadata();
 }
 export async function metadata() {
-  const [labs, categories, messages, updates] = await Promise.all([
+  const [labs, categories, updates] = await Promise.all([
     api.get("/laboratories"),
     api.get("/categories"),
-    api.get("/notifications"),
     api.get("/module-updates"),
   ]);
   state.moduleUpdates = updates.data;
   state.labs = labs.data;
   state.categories = categories.data;
-  state.unread = messages.data.filter((m: Row) => !m.readAt).length;
 }
 export async function refreshModuleUpdates() {
   const token = state.token;

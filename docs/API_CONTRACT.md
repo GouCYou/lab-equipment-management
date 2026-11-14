@@ -52,7 +52,7 @@
 | accept / start-repair | 受理、开始维修 |
 | note | `{note}`，当前维修人员补充过程 |
 | return-assignment | `{note}`，无法处理时退回分派 |
-| submit-acceptance | `{resolution,laborMinutes,costAmount}`，累计工时费用 |
+| submit-acceptance | `{resolution,laborMinutes}`，累计维修工时 |
 | acceptance | `{passed,note}`，非执行者的实验员验收或退回 |
 
 `POST /files` 使用 multipart `file`，20MB 上限，图片为 JPG/PNG，文档为 PDF/DOCX/TXT/Markdown。返回 id、name、mimeType、sizeBytes。`GET /files/{id}` 使用相同 Bearer 鉴权；照片只对所有者及授权关联记录可见，页面通过 Blob 展示，不把 token 放 URL。

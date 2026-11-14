@@ -550,15 +550,9 @@ class BusinessIntegrationTest {
       tech,
       id,
       "submit-acceptance",
-      Map.of(
-        "resolution",
-        "更换接头并检查通过",
-        "laborMinutes",
-        10,
-        "costAmount",
-        0
-      )
+      Map.of("resolution", "更换接头并检查通过", "laborMinutes", 10)
     );
+    assertFalse(q.ticket(tech, id).containsKey("costAmount"));
     assertThrows(ApiError.class, () ->
       business.ticketAction(
         tech,

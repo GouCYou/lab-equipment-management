@@ -53,11 +53,6 @@ export const router = createRouter({
       meta: { title: "统计分析", staff: true },
     },
     {
-      path: "/notifications",
-      component: () => import("./views/Notifications.vue"),
-      meta: { title: "消息中心" },
-    },
-    {
       path: "/profile",
       component: () => import("./views/Profile.vue"),
       meta: { title: "个人设置" },

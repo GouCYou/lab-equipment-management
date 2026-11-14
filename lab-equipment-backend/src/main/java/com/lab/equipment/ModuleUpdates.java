@@ -100,7 +100,6 @@ public class ModuleUpdates {
     out.put("loans", snapshot(q.loans(u, false), "LOAN"));
     out.put("tickets", snapshot(q.tickets(u), "TICKET"));
     out.put("knowledge", snapshot(knowledge.list(u), "KNOWLEDGE"));
-    out.put("notifications", snapshot(q.notifications(u), ""));
     out.put(
       "chat",
       snapshot(

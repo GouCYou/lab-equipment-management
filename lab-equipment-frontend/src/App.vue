@@ -12,7 +12,7 @@ import {
   moduleViewed,
   refreshModuleUpdates,
 } from "./state";
-import { sidebarExpanded } from "./preferences";
+import { sidebarExpanded, isDark, toggleTheme } from "./preferences";
 import ThemeToggle from "./components/ThemeToggle.vue";
 import Icon from "./components/Icon.vue";
 import ActionHost from "./components/ActionHost.vue";
@@ -57,6 +57,11 @@ function newChat() {
   void router.push("/chat");
   window.dispatchEvent(new Event("new-chat"));
   mobile.value = false;
+}
+function accountAction(id: string) {
+  if (id === "theme") toggleTheme();
+  else if (id === "logout") void logout();
+  else void router.push(id === "admin" ? "/admin" : "/profile");
 }
 async function logout() {
   mobile.value = false;
@@ -126,20 +131,15 @@ onMounted(async () => {
         /></router-link>
       </nav>
       <div class="rail-bottom">
-        <ThemeToggle :expanded="expanded" />
-        <router-link
-          to="/notifications"
-          title="消息中心"
-          class="nav-icon"
-          @click="visit('/notifications')"
-          ><Icon name="bell" /><i
-            v-if="state.moduleUpdates.notifications?.unread"
-            class="notification-dot"
-          /><span v-if="expanded">消息中心</span></router-link
-        ><ThemePopover
+        <ThemePopover
           placement="right-end"
           :items="[
             { id: 'profile', label: '个人设置', icon: 'user' },
+            {
+              id: 'theme',
+              label: isDark ? '浅色模式' : '深色模式',
+              icon: isDark ? 'sun' : 'moon',
+            },
             ...(has('ADMIN')
               ? [
                   {
@@ -158,12 +158,7 @@ onMounted(async () => {
               danger: true,
             },
           ]"
-          @select="
-            (id) =>
-              id === 'logout'
-                ? logout()
-                : router.push(id === 'admin' ? '/admin' : '/profile')
-          "
+          @select="accountAction"
         >
           <template #trigger="{ toggle, open }"
             ><button
@@ -174,10 +169,9 @@ onMounted(async () => {
             >
               <span class="avatar"><Icon name="user" /></span
               ><span v-if="expanded" class="account-name"
-                >{{ state.user?.name
-                }}<small>{{
-                  state.user?.roles?.map(label).join(" / ")
-                }}</small></span
+                >{{
+                  state.user?.roles?.map(label).join(" / ") || state.user?.name
+                }}<small>{{ state.user?.username }}</small></span
               >
             </button></template
           >

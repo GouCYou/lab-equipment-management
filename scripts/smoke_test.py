@@ -100,7 +100,7 @@ def main():
     a.post('/reservations',{**request,'equipmentId':devices[1]['id']},expected=409)
     passed('故障核实禁借并使未领取预约失效')
     def repair(t):
-        path='/tickets/'+t['id'];staff.post(path+'/assign',{'assigneeId':tech.user['id']});tech.post(path+'/accept');tech.post(path+'/start-repair');tech.post(path+'/note',{'note':'检查连接线与供电'});tech.post(path+'/submit-acceptance',{'resolution':'更换连接线，输出恢复正常','laborMinutes':15,'costAmount':0});staff.post(path+'/acceptance',{'passed':False,'note':'需要补充稳定性测试'});assert staff.get('/equipment/'+devices[1]['id'])['operationalStatus'] in ('MAINTENANCE','DISABLED');tech.post(path+'/submit-acceptance',{'resolution':'稳定性复测通过','laborMinutes':5,'costAmount':0});staff.post(path+'/acceptance',{'passed':True,'note':'现场复测正常'})
+        path='/tickets/'+t['id'];staff.post(path+'/assign',{'assigneeId':tech.user['id']});tech.post(path+'/accept');tech.post(path+'/start-repair');tech.post(path+'/note',{'note':'检查连接线与供电'});tech.post(path+'/submit-acceptance',{'resolution':'更换连接线，输出恢复正常','laborMinutes':15});staff.post(path+'/acceptance',{'passed':False,'note':'需要补充稳定性测试'});assert staff.get('/equipment/'+devices[1]['id'])['operationalStatus'] in ('MAINTENANCE','DISABLED');tech.post(path+'/submit-acceptance',{'resolution':'稳定性复测通过','laborMinutes':5});staff.post(path+'/acceptance',{'passed':True,'note':'现场复测正常'})
     repair(tickets[0]);assert staff.get('/equipment/'+devices[1]['id'])['operationalStatus']=='MAINTENANCE'
     staff.post('/equipment/'+devices[1]['id']+'/toggle',{'enabled':False,'reason':'暂时停用'})
     repair(tickets[1]);assert staff.get('/equipment/'+devices[1]['id'])['operationalStatus']=='DISABLED'

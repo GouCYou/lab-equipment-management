@@ -154,27 +154,6 @@ public class Db {
     );
   }
 
-  public void notify(
-    String user,
-    String title,
-    String content,
-    String type,
-    String target,
-    String key
-  ) {
-    update(
-      "INSERT IGNORE INTO notification(id,user_id,title,content,business_type,business_id,dedupe_key,created_at) VALUES(?,?,?,?,?,?,?,?)",
-      id(),
-      user,
-      title,
-      content,
-      type,
-      target,
-      key,
-      now()
-    );
-  }
-
   public List<Map<String, Object>> events(String type, String target) {
     return rows(
       "SELECT b.*,u.name AS actor_name FROM business_event b LEFT JOIN sys_user u ON u.id=b.actor_id WHERE business_type=? AND business_id=? ORDER BY b.created_at,b.id",

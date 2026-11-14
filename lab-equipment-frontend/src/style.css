@@ -651,7 +651,8 @@ td {
   color: #756b82;
   vertical-align: middle;
 }
-tr:last-child td {
+/* Framed business tables use the panel border; Markdown tables keep every cell border. */
+.panel > table > tbody:last-child > tr:last-child > td {
   border-bottom: 0;
 }
 td strong {

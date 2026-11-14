@@ -44,7 +44,7 @@ notification 通过用户和 dedupe_key 去重。idempotency_record 用用户/�
 | equipment | id, asset_no, name, model, category_id, lab_id, purchased_on, description, enabled, version, created_at |
 | reservation | id, reservation_no, equipment_id, user_id, lab_id, starts_at, ends_at, purpose, status, reviewed_by, reason, version, created_at |
 | loan_record | id, loan_no, reservation_id, equipment_id, user_id, lab_id, issued_by, issued_at, due_at, returned_at, return_note, return_photo_ids, status, checked_by, checked_at, active_equipment_id |
-| fault_ticket | id, ticket_no, equipment_id, lab_id, loan_id, reporter_id, title, description, photo_ids, severity, affects_use, status, assignee_id, verified_by, accepted_at, repair_started_at, repair_submitted_at, closed_at, resolution, labor_minutes, cost_amount, version, created_at |
+| fault_ticket | id, ticket_no, equipment_id, lab_id, loan_id, reporter_id, title, description, photo_ids, severity, affects_use, status, assignee_id, verified_by, accepted_at, repair_started_at, repair_submitted_at, closed_at, resolution, labor_minutes, version, created_at |
 | equipment_block | id, equipment_id, source_type, source_id, reason, starts_at, ends_at |
 | business_event | id, business_type, business_id, action, actor_id, note, created_at |
 | file_object | id, owner_id, storage_key, name, mime_type, size_bytes, created_at |
@@ -90,3 +90,5 @@ erDiagram
 ```
 
 V7新增 `module_seen(user_id,module_key,fingerprint,seen_at)`，主键为用户与模块，保存该账户最近查看的模块指纹。模块指纹由当前授权对象及其变更记录计算，旧版本确认不会清除后续变化。
+
+V9 迁移已移除工单维修费用字段，工时与其他维修记录保留。
