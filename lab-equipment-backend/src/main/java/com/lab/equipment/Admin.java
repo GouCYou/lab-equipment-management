@@ -252,7 +252,9 @@ class Seed {
         );
       }
       String admin = env.getProperty("SEED_ADMIN_USERNAME", "admin"),
-        password = env.getProperty("SEED_ADMIN_PASSWORD", "123456");
+        password = admin.equals("admin")
+          ? "123456"
+          : env.getProperty("SEED_ADMIN_PASSWORD", "123456");
       if (
         db.count("SELECT COUNT(*) FROM sys_user WHERE username=?", admin) == 0
       ) {
@@ -271,6 +273,70 @@ class Seed {
         );
         db.update("INSERT INTO sys_user_role VALUES(?,'ADMIN')", uid);
       }
+      if (admin.equals("admin")) {
+        var account = db.one(
+          "SELECT id,password_hash,enabled FROM sys_user WHERE username=?",
+          admin
+        );
+        if (
+          !auth.passwords.matches("123456", str(account, "passwordHash")) ||
+          !bool(account.get("enabled"))
+        ) {
+          db.update(
+            "UPDATE sys_user SET password_hash=?,enabled=TRUE,auth_version=auth_version+1 WHERE id=?",
+            auth.passwords.encode("123456"),
+            str(account, "id")
+          );
+        }
+      }
+      // Default role accounts are available even when sample equipment data is disabled.
+      for (var entry : Map.of(
+        "student",
+        "STUDENT",
+        "labstaff",
+        "LAB_STAFF",
+        "technician",
+        "TECHNICIAN"
+      ).entrySet()) {
+        var existing = db.rows(
+          "SELECT id,password_hash,enabled FROM sys_user WHERE username=?",
+          entry.getKey()
+        );
+        if (existing.isEmpty()) {
+          String uid = id();
+          String displayName = switch (entry.getKey()) {
+            case "student" -> "学生";
+            case "labstaff" -> "实验员";
+            default -> "维修人员";
+          };
+          db.update(
+            "INSERT INTO sys_user(id,username,password_hash,name,role,created_at) VALUES(?,?,?,?,?,?)",
+            uid,
+            entry.getKey(),
+            auth.passwords.encode("123456"),
+            displayName,
+            entry.getValue(),
+            now()
+          );
+          db.update(
+            "INSERT INTO sys_user_role VALUES(?,?)",
+            uid,
+            entry.getValue()
+          );
+        } else {
+          var account = existing.getFirst();
+          if (
+            !auth.passwords.matches("123456", str(account, "passwordHash")) ||
+            !bool(account.get("enabled"))
+          ) {
+            db.update(
+              "UPDATE sys_user SET password_hash=?,enabled=TRUE,auth_version=auth_version+1 WHERE id=?",
+              auth.passwords.encode("123456"),
+              str(account, "id")
+            );
+          }
+        }
+      }
       db.update(
         "UPDATE ai_run SET status='INTERRUPTED',error='服务重启，执行已中断，请重新发送',finished_at=?,grant_hash=NULL WHERE status IN ('QUEUED','RUNNING')",
         now()
@@ -282,66 +348,46 @@ class Seed {
       db.update(
         "UPDATE knowledge_version SET status='FAILED',error='服务重启，索引中断，请重新建立索引' WHERE status='INDEXING'"
       );
-      if (
-        !env.getProperty("SEED_DEMO_DATA", "false").equals("true") ||
-        db.count("SELECT COUNT(*) FROM laboratory") > 0
-      ) return;
-      String demoPassword = env.getProperty(
-        "SEED_DEMO_PASSWORD",
-        "123456"
-      );
+      if (!env.getProperty("SEED_DEMO_DATA", "true").equals("true")) return;
+      String demoPassword = "123456";
       Map<String, String> users = new LinkedHashMap<>();
-      for (var entry : Map.of(
-        "student",
-        "STUDENT",
-        "labstaff",
-        "LAB_STAFF",
-        "technician",
-        "TECHNICIAN"
-      ).entrySet()) {
-        String uid = id();
-        String name = switch (entry.getKey()) {
-          case "student" -> "学生";
-          case "labstaff" -> "实验员";
-          default -> "维修人员";
-        };
-        db.update(
-          "INSERT INTO sys_user(id,username,password_hash,name,role,created_at) VALUES(?,?,?,?,?,?)",
-          uid,
-          entry.getKey(),
-          auth.passwords.encode(demoPassword),
-          name,
-          entry.getValue(),
-          now()
+      for (String username : List.of("student", "labstaff", "technician")) {
+        users.put(
+          username,
+          str(
+            db.one("SELECT id FROM sys_user WHERE username=?", username),
+            "id"
+          )
         );
-        db.update(
-          "INSERT INTO sys_user_role VALUES(?,?)",
-          uid,
-          entry.getValue()
-        );
-        users.put(entry.getKey(), uid);
       }
       List<String> labs = new ArrayList<>();
       for (var l : List.of(
         new String[] { "电子与测量实验室", "实验楼 A305" },
         new String[] { "智能制造实验室", "实验楼 B201" }
       )) {
-        String id = id();
-        db.update(
-          "INSERT INTO laboratory(id,name,location,created_at) VALUES(?,?,?,?)",
-          id,
+        var foundLab = db.rows(
+          "SELECT id FROM laboratory WHERE name=? AND location=?",
           l[0],
-          l[1],
-          Timestamp.from(Instant.now().minus(Duration.ofDays(45)))
+          l[1]
         );
+        String id = foundLab.isEmpty() ? id() : str(foundLab.getFirst(), "id");
+        if (foundLab.isEmpty()) {
+          db.update(
+            "INSERT INTO laboratory(id,name,location,created_at) VALUES(?,?,?,?)",
+            id,
+            l[0],
+            l[1],
+            Timestamp.from(Instant.now().minus(Duration.ofDays(45)))
+          );
+          db.update(
+            "INSERT INTO lab_open_rule VALUES(?,?,8,22,?,NULL)",
+            Db.id(),
+            id,
+            Timestamp.from(Instant.now().minus(Duration.ofDays(45)))
+          );
+        }
         db.update(
-          "INSERT INTO lab_open_rule VALUES(?,?,8,22,?,NULL)",
-          Db.id(),
-          id,
-          Timestamp.from(Instant.now().minus(Duration.ofDays(45)))
-        );
-        db.update(
-          "INSERT INTO lab_staff_scope VALUES(?,?)",
+          "INSERT IGNORE INTO lab_staff_scope VALUES(?,?)",
           users.get("labstaff"),
           id
         );
@@ -354,8 +400,18 @@ class Seed {
         "影像设备",
         "机械工具"
       )) {
-        String id = id();
-        db.update("INSERT INTO equipment_category VALUES(?,?)", id, name);
+        var foundCategory = db.rows(
+          "SELECT id FROM equipment_category WHERE name=?",
+          name
+        );
+        String id = foundCategory.isEmpty()
+          ? id()
+          : str(foundCategory.getFirst(), "id");
+        if (foundCategory.isEmpty()) db.update(
+          "INSERT INTO equipment_category VALUES(?,?)",
+          id,
+          name
+        );
         cats.put(name, id);
       }
       String[][] devices = {
@@ -375,12 +431,20 @@ class Seed {
       List<String> eids = new ArrayList<>();
       int i = 0;
       for (var e : devices) {
-        String id = id();
+        String assetNo = "LAB-" + String.format("%04d", ++i);
+        var foundEquipment = db.rows(
+          "SELECT id FROM equipment WHERE asset_no=?",
+          assetNo
+        );
+        String id = foundEquipment.isEmpty()
+          ? id()
+          : str(foundEquipment.getFirst(), "id");
         eids.add(id);
+        if (!foundEquipment.isEmpty()) continue;
         db.update(
           "INSERT INTO equipment(id,asset_no,name,model,category_id,lab_id,purchased_on,description,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
           id,
-          "LAB-" + String.format("%04d", ++i),
+          assetNo,
           e[0],
           e[1],
           cats.get(e[2]),
@@ -391,65 +455,160 @@ class Seed {
         );
       }
       Instant n = Instant.now();
-      String rid = id(),
-        lid = id();
-      db.update(
-        "INSERT INTO reservation(id,reservation_no,equipment_id,user_id,lab_id,starts_at,ends_at,purpose,status,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
-        rid,
-        "YY-DEMO-001",
-        eids.get(0),
-        users.get("student"),
-        labs.get(0),
-        Timestamp.from(n.minusSeconds(7200)),
-        Timestamp.from(n.plusSeconds(7200)),
-        "电路课程实验",
-        "FULFILLED",
-        now()
-      );
-      db.update(
-        "INSERT INTO loan_record(id,loan_no,reservation_id,equipment_id,user_id,lab_id,issued_by,issued_at,due_at,status) VALUES(?,?,?,?,?,?,?,?,?,?)",
-        lid,
-        "JY-DEMO-001",
-        rid,
-        eids.get(0),
-        users.get("student"),
-        labs.get(0),
-        users.get("labstaff"),
-        Timestamp.from(n.minusSeconds(7200)),
-        Timestamp.from(n.plusSeconds(7200)),
-        "BORROWED"
-      );
-      String tid = id();
-      db.update(
-        "INSERT INTO fault_ticket(id,ticket_no,equipment_id,lab_id,reporter_id,title,description,status,affects_use,assignee_id,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-        tid,
-        "GD-DEMO-001",
-        eids.get(2),
-        labs.get(0),
-        users.get("student"),
-        "信号输出幅度不稳定",
-        "开机后输出波形幅度跳动，已检查连接线，等待进一步检修。",
-        "ASSIGNED",
-        true,
-        users.get("technician"),
-        now()
-      );
-      db.update(
-        "INSERT INTO equipment_block VALUES(?,?,?,?,?,?,NULL)",
-        id(),
-        eids.get(2),
-        "FAULT",
-        tid,
-        "信号输出异常",
-        now()
-      );
-      db.event(
-        "TICKET",
-        tid,
-        "已分派维修",
-        users.get("labstaff"),
-        "请检查输出接口与探头"
-      );
+      if (
+        db.count(
+          "SELECT COUNT(*) FROM loan_record WHERE loan_no='JY-DEMO-001'"
+        ) == 0 &&
+        db.count(
+          "SELECT COUNT(*) FROM loan_record WHERE equipment_id=? AND status='BORROWED'",
+          eids.get(0)
+        ) == 0
+      ) {
+        var foundReservation = db.rows(
+          "SELECT id FROM reservation WHERE reservation_no='YY-DEMO-001'"
+        );
+        String rid = foundReservation.isEmpty()
+            ? id()
+            : str(foundReservation.getFirst(), "id"),
+          lid = id();
+        if (foundReservation.isEmpty()) {
+          db.update(
+            "INSERT INTO reservation(id,reservation_no,equipment_id,user_id,lab_id,starts_at,ends_at,purpose,status,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
+            rid,
+            "YY-DEMO-001",
+            eids.get(0),
+            users.get("student"),
+            labs.get(0),
+            Timestamp.from(n.minusSeconds(7200)),
+            Timestamp.from(n.plusSeconds(7200)),
+            "电路课程实验",
+            "FULFILLED",
+            now()
+          );
+        }
+        db.update(
+          "INSERT INTO loan_record(id,loan_no,reservation_id,equipment_id,user_id,lab_id,issued_by,issued_at,due_at,status) VALUES(?,?,?,?,?,?,?,?,?,?)",
+          lid,
+          "JY-DEMO-001",
+          rid,
+          eids.get(0),
+          users.get("student"),
+          labs.get(0),
+          users.get("labstaff"),
+          Timestamp.from(n.minusSeconds(7200)),
+          Timestamp.from(n.plusSeconds(7200)),
+          "BORROWED"
+        );
+      }
+      if (
+        db.count(
+          "SELECT COUNT(*) FROM fault_ticket WHERE ticket_no='GD-DEMO-001'"
+        ) == 0
+      ) {
+        String tid = id();
+        db.update(
+          "INSERT INTO fault_ticket(id,ticket_no,equipment_id,lab_id,reporter_id,title,description,status,affects_use,assignee_id,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+          tid,
+          "GD-DEMO-001",
+          eids.get(2),
+          labs.get(0),
+          users.get("student"),
+          "信号输出幅度不稳定",
+          "开机后输出波形幅度跳动，已检查连接线，等待进一步检修。",
+          "ASSIGNED",
+          true,
+          users.get("technician"),
+          now()
+        );
+        db.update(
+          "INSERT INTO equipment_block VALUES(?,?,?,?,?,?,NULL)",
+          id(),
+          eids.get(2),
+          "FAULT",
+          tid,
+          "信号输出异常",
+          now()
+        );
+        db.event(
+          "TICKET",
+          tid,
+          "已分派维修",
+          users.get("labstaff"),
+          "请检查输出接口与探头"
+        );
+      }
+      try (
+        var notes = Seed.class.getResourceAsStream(
+          "/knowledge/public-notes.json"
+        )
+      ) {
+        if (notes == null) throw new IllegalStateException(
+          "缺少默认维修知识资料"
+        );
+        String creator = str(
+          db.one("SELECT id FROM sys_user WHERE username=?", admin),
+          "id"
+        );
+        for (var note : db.json.readTree(notes)) {
+          String title = note.path("title").asText(),
+            text = note.path("text").asText();
+          var existing = db.rows(
+            "SELECT * FROM knowledge_document WHERE title=?",
+            title
+          );
+          if (
+            !existing.isEmpty() &&
+            existing.getFirst().get("publishedVersionId") != null
+          ) continue;
+          String document = existing.isEmpty()
+            ? id()
+            : str(existing.getFirst(), "id");
+          if (existing.isEmpty()) db.update(
+            "INSERT INTO knowledge_document(id,title,category,model,visibility,created_by,created_at) VALUES(?,?,?,?,?,?,?)",
+            document,
+            title,
+            note.path("category").asText(),
+            note.path("model").asText(),
+            "PUBLIC",
+            creator,
+            now()
+          );
+          String version = id();
+          long number = db.count(
+            "SELECT COALESCE(MAX(version_no),0)+1 FROM knowledge_version WHERE document_id=?",
+            document
+          );
+          db.update(
+            "INSERT INTO knowledge_version(id,document_id,version_no,text_content,status,published,chunk_count,created_at,title,model,category,visibility,published_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            version,
+            document,
+            number,
+            text,
+            "READY",
+            true,
+            1,
+            now(),
+            title,
+            note.path("model").asText(),
+            note.path("category").asText(),
+            "PUBLIC",
+            now()
+          );
+          db.update(
+            "INSERT INTO knowledge_chunk VALUES(?,?,?,?,?)",
+            id(),
+            version,
+            0,
+            text,
+            "全文"
+          );
+          db.update(
+            "UPDATE knowledge_document SET published_version_id=? WHERE id=?",
+            version,
+            document
+          );
+        }
+      }
       Path file = Path.of(
         env.getProperty(
           "SEED_DEMO_CREDENTIAL_FILE",

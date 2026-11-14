@@ -18,7 +18,7 @@
 | LOCAL_LAN_IP | 多网卡环境手工指定局域网地址 |
 | LOCAL_MYSQL_SERVICE / LOCAL_REDIS_SERVICE | Windows/Linux 服务名覆盖 |
 | SEED_ADMIN_USERNAME / SEED_ADMIN_PASSWORD | 首次初始化管理员，已有账户保留 |
-| SEED_DEMO_DATA | 明确设 true 才在空实验室库初始化演示数据 |
+| SEED_DEMO_DATA | 启动器默认开启，自动补齐缺失的演示数据；后端独立运行可明确设 false 关闭 |
 | SEED_DEMO_PASSWORD | 演示账户密码，默认 123456 |
 | AI_INTERNAL_KEY | 内部鉴权及模型密钥加密根密钥；必须妥善备份 |
 
@@ -53,3 +53,5 @@ Windows 安装故障详情同时保存在 `.runtime/windows/setup.log` 和 `.run
 Windows Memurai 安装修复：先从 PATH、卸载注册表和服务路径查找可用客户端，兼容的已有安装直接复用。不再强制 winget 重装 Memurai；缺失时下载并校验官方 MSI，禁用安装阶段的防火墙/服务动作，再按需单独注册服务。详细 MSI 错误保存于 `%ProgramData%\BoyiRuntime\memurai-install.log`，主窗口显示原始 Windows Installer 错误码。
 
 Windows 菜单启动时执行只读安装探测，不依赖完整安装成功后才写入的 environment.json：检查系统安装目录、MySQL 注册表和服务可执行文件目录，以及全局 Maven 目录、MAVEN_HOME/M2_HOME；把识别路径立即用于当前进程。Memurai 客户端可直接调用，无需先创建 redis-cli 别名。探测不要求管理员权限、不安装软件、不创建项目运行目录。
+
+默认演示初始化与账户初始化独立：始终补齐四个默认角色账户（123456），启动器默认带上两间实验室、12 台设备、借还/工单样例及三篇已发布维修资料；按资产编号、单号及资料标题检查，不覆盖已有业务进度、不重复导入。已有实验室不会阻止补齐其他样例。

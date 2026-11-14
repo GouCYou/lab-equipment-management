@@ -48,6 +48,182 @@ class BusinessIntegrationTest {
   ModuleUpdates moduleUpdates;
 
   @Test
+  void sampleDataIsFilledInExistingDatabaseWithoutDuplicates()
+    throws Exception {
+    var credentialFile = java.nio.file.Files.createTempFile(
+      "boyi-seed-",
+      ".json"
+    );
+    try {
+      var environment = new org.springframework.mock.env.MockEnvironment()
+        .withProperty("SEED_ADMIN_USERNAME", "lab_test_admin")
+        .withProperty("SEED_ADMIN_PASSWORD", "123456")
+        .withProperty("SEED_DEMO_DATA", "true")
+        .withProperty("SEED_DEMO_CREDENTIAL_FILE", credentialFile.toString());
+      var initializer = new Seed().initializeData(db, auth, environment);
+      initializer.run(
+        new org.springframework.boot.DefaultApplicationArguments(new String[0])
+      );
+      for (int i = 1; i <= 12; i++) {
+        assertEquals(
+          1,
+          db.count(
+            "SELECT COUNT(*) FROM equipment WHERE asset_no=?",
+            "LAB-" + String.format("%04d", i)
+          )
+        );
+      }
+      assertEquals(
+        1,
+        db.count("SELECT COUNT(*) FROM loan_record WHERE loan_no='JY-DEMO-001'")
+      );
+      assertEquals(
+        1,
+        db.count(
+          "SELECT COUNT(*) FROM fault_ticket WHERE ticket_no='GD-DEMO-001'"
+        )
+      );
+      long equipmentCount = db.count("SELECT COUNT(*) FROM equipment");
+      long documentCount = db.count("SELECT COUNT(*) FROM knowledge_document");
+      for (String title : List.of(
+        "树莓派启动与显示检查",
+        "树莓派供电与外设连接",
+        "示波器探头连接与维护检查"
+      )) {
+        var document = db.one(
+          "SELECT * FROM knowledge_document WHERE title=?",
+          title
+        );
+        assertNotNull(document.get("publishedVersionId"));
+        assertEquals(
+          1,
+          db.count(
+            "SELECT COUNT(*) FROM knowledge_chunk WHERE version_id=?",
+            str(document, "publishedVersionId")
+          )
+        );
+      }
+      initializer.run(
+        new org.springframework.boot.DefaultApplicationArguments(new String[0])
+      );
+      assertEquals(equipmentCount, db.count("SELECT COUNT(*) FROM equipment"));
+      assertEquals(
+        documentCount,
+        db.count("SELECT COUNT(*) FROM knowledge_document")
+      );
+      assertEquals(
+        1,
+        db.count("SELECT COUNT(*) FROM loan_record WHERE loan_no='JY-DEMO-001'")
+      );
+      assertEquals(
+        1,
+        db.count(
+          "SELECT COUNT(*) FROM fault_ticket WHERE ticket_no='GD-DEMO-001'"
+        )
+      );
+    } finally {
+      java.nio.file.Files.deleteIfExists(credentialFile);
+    }
+  }
+
+  @Test
+  void missingDefaultStudentIsCreatedWithDemoDataDisabled() throws Exception {
+    var original = db.one("SELECT * FROM sys_user WHERE username='student'");
+    String renamed = "saved-student-" + id();
+    db.update(
+      "UPDATE sys_user SET username=? WHERE id=?",
+      renamed,
+      str(original, "id")
+    );
+    try {
+      var environment = new org.springframework.mock.env.MockEnvironment()
+        .withProperty("SEED_ADMIN_USERNAME", "lab_test_admin")
+        .withProperty("SEED_ADMIN_PASSWORD", "123456")
+        .withProperty("SEED_DEMO_DATA", "false");
+      new Seed()
+        .initializeData(db, auth, environment)
+        .run(
+          new org.springframework.boot.DefaultApplicationArguments(
+            new String[0]
+          )
+        );
+      var created = db.one("SELECT * FROM sys_user WHERE username='student'");
+      assertEquals("STUDENT", str(created, "role"));
+      assertTrue(
+        auth.passwords.matches("123456", str(created, "passwordHash"))
+      );
+      assertEquals(
+        1,
+        db.count(
+          "SELECT COUNT(*) FROM sys_user_role WHERE user_id=? AND role_code='STUDENT'",
+          str(created, "id")
+        )
+      );
+    } finally {
+      db.update(
+        "DELETE FROM sys_user_role WHERE user_id IN (SELECT id FROM sys_user WHERE username='student')"
+      );
+      db.update("DELETE FROM sys_user WHERE username='student'");
+      db.update(
+        "UPDATE sys_user SET username='student' WHERE id=?",
+        str(original, "id")
+      );
+    }
+  }
+
+  @Test
+  void defaultRoleAccountsExistWithoutSampleDataAndKeepSharedPassword()
+    throws Exception {
+    var seed = new Seed();
+    var environment = new org.springframework.mock.env.MockEnvironment()
+      .withProperty("SEED_ADMIN_USERNAME", "lab_test_admin")
+      .withProperty("SEED_ADMIN_PASSWORD", "123456")
+      .withProperty("SEED_DEMO_DATA", "false");
+    long laboratories = db.count("SELECT COUNT(*) FROM laboratory");
+    db.update(
+      "UPDATE sys_user SET password_hash=?,enabled=FALSE WHERE username='student'",
+      auth.passwords.encode("old-password")
+    );
+    var initializer = seed.initializeData(db, auth, environment);
+    initializer.run(
+      new org.springframework.boot.DefaultApplicationArguments(new String[0])
+    );
+    assertEquals(laboratories, db.count("SELECT COUNT(*) FROM laboratory"));
+    for (String username : List.of("student", "labstaff", "technician")) {
+      var account = db.one("SELECT * FROM sys_user WHERE username=?", username);
+      assertTrue(
+        auth.passwords.matches("123456", str(account, "passwordHash"))
+      );
+      assertTrue(bool(account.get("enabled")));
+      assertEquals(
+        1,
+        db.count(
+          "SELECT COUNT(*) FROM sys_user_role WHERE user_id=?",
+          str(account, "id")
+        )
+      );
+    }
+    var studentAccount = db.one(
+      "SELECT * FROM sys_user WHERE username='student'"
+    );
+    var version = studentAccount.get("authVersion");
+    initializer.run(
+      new org.springframework.boot.DefaultApplicationArguments(new String[0])
+    );
+    assertEquals(
+      version,
+      db
+        .one("SELECT * FROM sys_user WHERE username='student'")
+        .get("authVersion")
+    );
+    assertNotNull(
+      auth
+        .login(Map.of("username", "student", "password", "123456"), "seed-test")
+        .get("token")
+    );
+  }
+
+  @Test
   void conversationPinAndRenamePersistAndRespectOwnership() {
     String cid = id(),
       recent = id();

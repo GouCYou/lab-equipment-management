@@ -1,0 +1,5 @@
+[
+ {"title":"树莓派启动与显示检查","model":"","category":"开发与计算","visibility":"PUBLIC","text":"树莓派启动与显示检查\n无法启动时，核对启动存储卡是否装有操作系统。没有画面时，检查显示器输入源及线缆；有多个 HDMI 接口时，主屏连接 HDMI0。\n来源：Raspberry Pi 官方 Getting started，Boot media / Displays。\nhttps://www.raspberrypi.com/documentation/computers/getting-started.html"},
+ {"title":"树莓派供电与外设连接","model":"","category":"开发与计算","visibility":"PUBLIC","text":"树莓派供电与外设连接\n先连接存储卡、显示器和外设，最后接通电源。电源需匹配具体型号；设备放在金属台面时使用外壳，避免短路。遇到供电异常时先核对电源与线缆。\n来源：Raspberry Pi 官方 Getting started，Hardware prerequisites / Power supply。\nhttps://www.raspberrypi.com/documentation/computers/getting-started.html"},
+ {"title":"示波器探头连接与维护检查","model":"","category":"测量仪器","visibility":"PUBLIC","text":"示波器探头连接与维护检查\n测量前核对仪器及探头额定范围。先将探头连接示波器，再按说明接地并连接测试点；拆除时先移开探头尖端，再断开地线。探头表面保持干燥清洁，发现破损应停止使用并报修。\n来源：Tektronix ABCs of Probes，Probing Safety，第4—5页；为资料摘要，具体设备操作以对应手册为准。\nhttps://download.tek.com/document/ABCs-of-Probes-Primer-60W-6053-17.pdf"}
+]

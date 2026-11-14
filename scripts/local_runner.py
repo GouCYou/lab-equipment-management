@@ -97,7 +97,7 @@ def config(initialize=True):
                 'LOCAL_REDIS_HOST=127.0.0.1\nLOCAL_REDIS_PORT=6379\n'
                 'LOCAL_QDRANT_PORT=17333\nLOCAL_QDRANT_GRPC_PORT=17334\n'
                 'LOCAL_AI_PORT=18100\nLOCAL_BACKEND_PORT=18180\nLOCAL_FRONTEND_PORT=5188\n'
-                'AI_MODE=real\nSEED_DEMO_DATA=false\n')
+                'AI_MODE=real\nSEED_DEMO_DATA=true\n')
         fd = os.open(file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         with os.fdopen(fd, 'w') as output:
             output.write(text)
@@ -820,7 +820,7 @@ def start(env, mode=None):
         knowledge = STATE / 'knowledge'
         knowledge.mkdir(exist_ok=True)
         mode = 'real'
-        settings = dict(env, AI_MODE=mode, KNOWLEDGE_DIR=str(knowledge),
+        settings = dict(env, AI_MODE=mode, SEED_DEMO_DATA='true', SEED_DEMO_CREDENTIAL_FILE=str(STATE/'demo-accounts.json'), KNOWLEDGE_DIR=str(knowledge),
                         BACKEND_INTERNAL_URL=f'http://127.0.0.1:{p["backend"]}',
                         QDRANT_URL=f'http://127.0.0.1:{p["qdrant"]}', AI_BASE_URL=f'http://127.0.0.1:{p["ai"]}',
                         DB_URL=f'jdbc:mysql://{env["LOCAL_DB_HOST"]}:{env["LOCAL_DB_PORT"]}/{env["DB_NAME"]}?useUnicode=true&characterEncoding=UTF-8&serverTimezone=UTC&forceConnectionTimeZoneToSession=true&allowPublicKeyRetrieval=true&useSSL=false',
@@ -849,7 +849,7 @@ def start(env, mode=None):
             (STATE / 'mode').write_text(mode)
         print('\n项目已启动。', flush=True)
         status(env)
-        print(f'管理员：{settings["SEED_ADMIN_USERNAME"]}；密码见 .env 中 SEED_ADMIN_PASSWORD（或 {STATE / "credentials.json"}）。')
+        print("默认账户：admin / student / labstaff / technician；密码统一为 123456。")
         print(f'日志目录：{STATE}\n下次打开根目录 run.sh / run.bat 后，可在菜单选择停止。')
     except BaseException:
         stop(newly_started, announce=False)
@@ -1157,7 +1157,7 @@ def show_accounts(env):
     print(paint('博仪 · 各角色演示账户\n', '1;32'))
     for role, username in [('管理员', env.get('SEED_ADMIN_USERNAME', 'admin')), ('学生', 'student'), ('实验员', 'labstaff'), ('维修人员', 'technician')]:
         print(f'{role:<8}  用户名：{username:<14}  密码：123456')
-    print('\n学生、实验员和维修人员账户由演示数据初始化。')
+    print('\n学生、实验员和维修人员账户在后端启动时自动创建，密码统一为 123456。')
 
 
 def menu():
