@@ -445,6 +445,13 @@ def resident(name, host, port, formula, env=None):
     raise RuntimeError(f'{name} 服务启动后仍未监听 {host}:{port}，请检查服务日志与 .env.local 中的端口')
 
 
+def default_qdrant_binary():
+    if IS_WINDOWS:
+        base = Path(os.environ.get('LOCALAPPDATA') or str(Path.home() / 'AppData/Local'))
+        return base / 'Programs/BoyiRuntime/qdrant-1.15.5/qdrant.exe'
+    return STATE / 'bin/qdrant'
+
+
 def qdrant_bin(env):
     supplied = env.get('LOCAL_QDRANT_BIN') or shutil.which('qdrant')
     if supplied:
@@ -453,7 +460,7 @@ def qdrant_bin(env):
         if not path.is_file():
             raise RuntimeError('LOCAL_QDRANT_BIN 文件不存在')
         return path
-    binary = STATE / 'bin' / ('qdrant.exe' if IS_WINDOWS else 'qdrant')
+    binary = default_qdrant_binary()
     if binary.exists():
         return binary
     arch = {'arm64': 'aarch64', 'aarch64': 'aarch64', 'x86_64': 'x86_64', 'amd64': 'x86_64'}.get(platform.machine().lower())
@@ -463,8 +470,8 @@ def qdrant_bin(env):
     if not arch or not os_name:
         raise RuntimeError('请通过 LOCAL_QDRANT_BIN 指定本机 Qdrant 可执行文件')
     extension = 'zip' if IS_WINDOWS else 'tar.gz'
-    archive = STATE / 'bin' / ('qdrant.' + extension)
-    binary.parent.mkdir(exist_ok=True)
+    archive = binary.parent / ('qdrant.' + extension)
+    binary.parent.mkdir(parents=True, exist_ok=True)
     url = f'https://github.com/qdrant/qdrant/releases/download/v1.15.5/qdrant-{arch}-{os_name}.{extension}'
     print('下载 Qdrant 1.15.5 …', flush=True)
     proxy = env.get('LOCAL_GITHUB_PROXY', 'https://ghfast.top').strip().rstrip('/')
@@ -596,7 +603,8 @@ def select_windows_jdk():
 
 
 def activate_windows_tools():
-    manifest = ROOT / '.runtime/windows/environment.json'
+    shared_manifest = Path(os.environ.get('ProgramData', 'C:/ProgramData')) / 'BoyiRuntime/environment.json'
+    manifest = shared_manifest if shared_manifest.is_file() else ROOT / '.runtime/windows/environment.json'
     if manifest.is_file():
         data = json.loads(manifest.read_text(encoding='utf-8-sig'))
         bins = [str(path) for path in data.get('bins', []) if Path(path).is_dir()]
@@ -667,7 +675,7 @@ def inspect_project_dependencies(env):
           cached('AI 依赖',ai/('.venv/Scripts/python.exe' if IS_WINDOWS else '.venv/bin/python'),STATE/'ai-deps.hash',[ai/'requirements.txt',ai/'constraints.txt'],host),
           cached('后端构建',STATE/'bin/backend.jar',STATE/'backend-build.hash',[backend/'pom.xml',*[p for p in (backend/'src/main').rglob('*') if p.is_file()]])]
     supplied=env.get('LOCAL_QDRANT_BIN') or shutil.which('qdrant')
-    path=Path(supplied).expanduser() if supplied else STATE/'bin'/('qdrant.exe' if IS_WINDOWS else 'qdrant')
+    path=Path(supplied).expanduser() if supplied else default_qdrant_binary()
     if not path.is_absolute(): path=ROOT/path
     rows.append({'label':'Qdrant','state':'已就绪' if path.is_file() else '待下载','path':str(path)})
     return rows

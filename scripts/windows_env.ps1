@@ -3,6 +3,9 @@ $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding
 $root = Split-Path $PSScriptRoot -Parent
 $state = Join-Path $root '.runtime\windows'
+$installRoot = Join-Path $env:ProgramFiles 'BoyiRuntime'
+$sharedState = Join-Path $env:ProgramData 'BoyiRuntime'
+$downloadCache = Join-Path $sharedState 'downloads'
 New-Item -ItemType Directory -Force $state | Out-Null
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
@@ -16,12 +19,16 @@ function Install-Package([string]$Id, [switch]$ForceInstall) {
     Write-Host "Installing $Id ..."
     $extraArguments = @()
     if ($ForceInstall) { $extraArguments += '--force' }
+    if (!$BootstrapOnly) { $extraArguments += @('--scope', 'machine') }
     & winget.exe install @extraArguments --id $Id --exact --source winget --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
     if ($LASTEXITCODE -ne 0) { throw "Installation failed: $Id (exit $LASTEXITCODE). Run again to resume." }
     Refresh-Path
 }
 function Test-Tool([string]$Binary, [string[]]$Arguments, [string]$Pattern) {
-    if (!(Get-Command $Binary -ErrorAction SilentlyContinue)) { return $false }
+    $resolved = Get-Command $Binary -ErrorAction SilentlyContinue
+    if (!$resolved) { return $false }
+    # Old project-local runtime copies must not prevent installation into the shared location.
+    if ($resolved.Source -and $resolved.Source.StartsWith((Join-Path $root '.runtime'), [StringComparison]::OrdinalIgnoreCase)) { return $false }
     try {
         # Version probes may write their normal output to stderr in Windows PowerShell 5.1.
         $ErrorActionPreference = 'Continue'
@@ -76,8 +83,8 @@ function Find-Jdk {
 }
 
 function Expand-Package([string]$Url, [string]$Directory) {
-    $zip = Join-Path $state "$Directory.zip"
-    $target = Join-Path $state $Directory
+    $zip = Join-Path $downloadCache "$Directory.zip"
+    $target = Join-Path $installRoot $Directory
     if (!(Test-Path $target)) {
         Write-Host "Downloading $Directory ..."
         Invoke-WebRequest -UseBasicParsing $Url -OutFile "$zip.part"
@@ -121,6 +128,14 @@ try {
     [IO.File]::WriteAllText((Join-Path $state 'python-path.txt'), $python, (New-Object Text.UTF8Encoding($false)))
     if ($BootstrapOnly) { exit 0 }
 
+    New-Item -ItemType Directory -Force $installRoot, $sharedState, $downloadCache | Out-Null
+    # Load globally installed tools before checking whether another download is necessary.
+    $globalManifest = Join-Path $sharedState 'environment.json'
+    if (Test-Path $globalManifest) {
+        $sharedEnvironment = Get-Content -Raw -Encoding UTF8 $globalManifest | ConvertFrom-Json
+        $env:Path = ($sharedEnvironment.bins -join ';') + ';' + $env:Path
+    }
+
     $javaHome = Find-Jdk
     if (!$javaHome) {
         Install-Package 'EclipseAdoptium.Temurin.21.JDK'
@@ -128,6 +143,7 @@ try {
     }
     if (!$javaHome) { throw 'Java 21 JDK not found.' }
     $bins = @("$javaHome\bin", (Split-Path $python))
+    if ($sharedEnvironment) { $bins += @($sharedEnvironment.bins | Where-Object { Test-Path $_ }) }
 
     if (!(Test-Tool 'node.exe' @('--version') '^v(?:22\.(?:1[2-9]|[2-9][0-9])|2[3-9]\.|[3-9][0-9]\.)') -or
         !(Test-Tool 'npm.cmd' @('--version') '\d+\.')) {
@@ -155,8 +171,8 @@ try {
     $services = @(Get-Service | Where-Object { $_.Name -match 'mysql' })
     # Only initialize data owned by this installer; never alter an existing service or password.
     if (!$services.Count) {
-        $data = Join-Path $state 'mysql-data'
-        $ini = Join-Path $state 'mysql.ini'
+        $data = Join-Path $sharedState 'mysql-data'
+        $ini = Join-Path $sharedState 'mysql.ini'
         if (!(Test-Path $ini)) {
             $content = "[mysqld]`r`nbasedir=$((Split-Path $mysqlBin).Replace('\','/'))`r`ndatadir=$($data.Replace('\','/'))`r`nport=3306`r`nbind-address=127.0.0.1`r`n"
             [IO.File]::WriteAllText($ini, $content, (New-Object Text.UTF8Encoding($false)))
@@ -182,7 +198,7 @@ try {
     }
     if (!$redisCompatible) {
         if (!(Test-Path $memuraiCli)) { throw 'Memurai client not found.' }
-        $cliDir = Join-Path $state 'redis-cli'
+        $cliDir = Join-Path $installRoot 'redis-cli'
         New-Item -ItemType Directory -Force $cliDir | Out-Null
         Copy-Item $memuraiCli "$cliDir\redis-cli.exe" -Force
         # Preserve any DLL dependencies distributed alongside the client.
@@ -197,7 +213,19 @@ try {
     if (!$redisServices.Count) { throw 'Redis-compatible service not found.' }
 
     $manifest = @{ bins=$bins; JAVA_HOME=$javaHome; LOCAL_AI_PYTHON=$python }
-    [IO.File]::WriteAllText((Join-Path $state 'environment.json'), ($manifest | ConvertTo-Json), (New-Object Text.UTF8Encoding($false)))
+    $manifestJson = $manifest | ConvertTo-Json
+    [IO.File]::WriteAllText($globalManifest, $manifestJson, (New-Object Text.UTF8Encoding($false)))
+    [IO.File]::WriteAllText((Join-Path $state 'environment.json'), $manifestJson, (New-Object Text.UTF8Encoding($false)))
+    # Make shared command-line tools available to other projects and new terminals.
+    $machinePath = [Environment]::GetEnvironmentVariable('Path','Machine')
+    $pathEntries = @($machinePath -split ';' | Where-Object { $_ })
+    foreach ($binDirectory in $bins) {
+        if ($pathEntries -notcontains $binDirectory) { $pathEntries += $binDirectory }
+    }
+    [Environment]::SetEnvironmentVariable('Path', ($pathEntries -join ';'), 'Machine')
+    $mavenBin = $bins | Where-Object { $_ -match 'apache-maven-[^\\]+\\bin$' } | Select-Object -First 1
+    if ($mavenBin) { [Environment]::SetEnvironmentVariable('MAVEN_HOME', (Split-Path $mavenBin), 'Machine') }
+
     Write-Host 'Runtime installation complete. Project dependencies will be installed next.'
 } catch {
     $failure = "Installation failed: $($_.Exception.Message)`r`n$($_.InvocationInfo.PositionMessage)`r`n$($_.ScriptStackTrace)"

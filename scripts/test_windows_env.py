@@ -25,6 +25,35 @@ class WindowsEnvironmentTests(unittest.TestCase):
                 self.assertEqual(os.environ['JAVA_HOME'], str(root / 'jdk'))
                 self.assertEqual(os.environ['LOCAL_AI_PYTHON'], str(root / 'python.exe'))
 
+    def test_shared_environment_is_preferred_to_old_project_copy(self):
+        with tempfile.TemporaryDirectory(prefix='boyi shared ') as tmp:
+            root = Path(tmp)
+            program_data = root / 'ProgramData'
+            global_dir = program_data / 'BoyiRuntime'
+            local_dir = root / '.runtime/windows'
+            global_bin = root / 'ProgramFiles/BoyiRuntime/node'
+            global_dir.mkdir(parents=True)
+            local_dir.mkdir(parents=True)
+            global_bin.mkdir(parents=True)
+            (global_dir / 'environment.json').write_text(json.dumps({'bins': [str(global_bin)]}))
+            (local_dir / 'environment.json').write_text(json.dumps({'bins': [str(root)]}))
+            with patch.object(runner, 'ROOT', root), \
+                    patch.object(runner, 'select_windows_jdk', return_value=None), \
+                    patch.dict(os.environ, {'ProgramData': str(program_data), 'PATH': 'original'}):
+                runner.activate_windows_tools()
+                self.assertEqual(os.environ['PATH'], str(global_bin) + os.pathsep + 'original')
+
+    def test_windows_qdrant_is_shared_between_project_directories(self):
+        with tempfile.TemporaryDirectory() as tmp, \
+                patch.object(runner, 'IS_WINDOWS', True), \
+                patch.dict(os.environ, {'LOCALAPPDATA': tmp}):
+            with patch.object(runner, 'ROOT', Path(tmp) / 'project1'):
+                first = runner.default_qdrant_binary()
+            with patch.object(runner, 'ROOT', Path(tmp) / 'project2'):
+                second = runner.default_qdrant_binary()
+            self.assertEqual(first, second)
+            self.assertEqual(first, Path(tmp) / 'Programs/BoyiRuntime/qdrant-1.15.5/qdrant.exe')
+
     def test_java8_default_does_not_hide_java21_or_newer(self):
         import subprocess
         with tempfile.TemporaryDirectory() as tmp:

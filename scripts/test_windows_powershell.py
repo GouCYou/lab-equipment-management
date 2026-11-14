@@ -55,6 +55,25 @@ if (!(Test-Tool 'mvn.cmd' @('--version') 'Apache Maven (?:3\\.(?:[6-9]|[1-9][0-9
 exit 0
 ''')
 
+    def test_existing_package_is_reused_outside_project(self):
+        with tempfile.TemporaryDirectory(prefix='boyi global ') as tmp:
+            base = Path(tmp)
+            (base / 'ProgramFiles/BoyiRuntime/maven').mkdir(parents=True)
+            output = self.run_script('''
+$ErrorActionPreference='Stop'
+$tokens=$null; $issues=$null
+$ast=[System.Management.Automation.Language.Parser]::ParseFile($env:BOYI_INSTALLER_PATH,[ref]$tokens,[ref]$issues)
+$fn=$ast.Find({param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Expand-Package'},$true)
+Invoke-Expression $fn.Extent.Text
+$installRoot=Join-Path $env:BOYI_TEST_ROOT 'ProgramFiles/BoyiRuntime'
+$downloadCache=Join-Path $env:BOYI_TEST_ROOT 'ProgramData/BoyiRuntime/downloads'
+$state=Join-Path $env:BOYI_TEST_ROOT 'project/.runtime/windows'
+function Invoke-WebRequest { throw 'Should reuse the existing global package' }
+Expand-Package 'https://unused.example/package.zip' 'maven'
+''', {'BOYI_TEST_ROOT': tmp})
+            self.assertEqual(output.strip(), str(base / 'ProgramFiles/BoyiRuntime/maven'))
+            self.assertFalse((base / 'project').exists())
+
     @unittest.skipIf(os.name == 'nt', 'Mock executables use POSIX scripts')
     def test_real_find_jdk_selects_21_with_home_set_to_8(self):
         with tempfile.TemporaryDirectory(prefix='boyi jdk ') as tmp:

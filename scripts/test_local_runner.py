@@ -28,6 +28,9 @@ class ControllerTests(unittest.TestCase):
             item = patch.object(runner, name, value)
             item.start()
             self.addCleanup(item.stop)
+        item = patch.object(runner, 'default_qdrant_binary', return_value=self.state / 'bin/qdrant.exe')
+        item.start()
+        self.addCleanup(item.stop)
         self.addCleanup(patch.stopall)
 
     def test_opening_readonly_configuration_creates_no_files(self):

@@ -28,11 +28,13 @@
 
 macOS 安装器沿用 Homebrew，支持 Apple Silicon/Intel，按需安装 Python3.12、Java21、Node24、MySQL8.4、Redis、Maven。已有兼容 MySQL8.0 复用，不自动升级。环境路径只作用于项目脚本，不改 shell 配置。镜像优先、失败回退官方，依赖指纹包含系统和架构。
 
-Windows x64 双击 `run.bat`，选择“安装 / 修复运行环境”，或直接选择“启动项目”自动补齐缺失环境；也可运行 `run.bat setup`。缺少 Python 时先通过 winget 安装 Python，再打开菜单。完整安装自动申请管理员权限，准备 Python、Java21、Node24、Maven、MySQL8.4 和 Memurai（Redis 兼容服务），随后安装 npm/pip 依赖、构建后端并下载 Qdrant。需要联网及 Microsoft App Installer（winget）。已有兼容环境与数据库服务复用；新 MySQL 数据位于 `.runtime/windows/mysql-data`，不重置已有密码。安装失败会显示具体步骤，可再次运行继续。项目工具路径自动记忆，无需手动修改 PATH。JDK8/21 等多个版本共存时，自动检测并选用可用的最高版本 JDK（至少21），为项目设置 JAVA_HOME/PATH，不修改系统默认 Java。
+Windows x64 双击 `run.bat`，选择“安装 / 修复运行环境”，或直接选择“启动项目”自动补齐缺失环境；也可运行 `run.bat setup`。缺少 Python 时先通过 winget 安装 Python，再打开菜单。完整安装自动申请管理员权限，准备 Python、Java21、Node24、Maven、MySQL8.4 和 Memurai（Redis 兼容服务），随后安装 npm/pip 依赖、构建后端并下载 Qdrant。需要联网及 Microsoft App Installer（winget）。已有兼容环境与数据库服务复用；新 MySQL 数据位于 `%ProgramData%\BoyiRuntime\mysql-data`，不重置已有密码。安装失败会显示具体步骤，可再次运行继续。项目工具路径自动记忆，无需手动修改 PATH。JDK8/21 等多个版本共存时，自动检测并选用可用的最高版本 JDK（至少21），为项目设置 JAVA_HOME/PATH，不修改系统默认 Java。
 
 Linux 保留已有系统环境和服务检测。Windows 安装流程已有模拟测试，尚未进行 Windows 实机端到端验证。
 
 ## 数据目录
+
+Windows 运行工具全局安装：winget 使用系统安装范围；ZIP 工具放在 `%ProgramFiles%\BoyiRuntime`，下载缓存和共享环境记录放在 `%ProgramData%\BoyiRuntime`，Qdrant 程序放在 `%LOCALAPPDATA%\Programs\BoyiRuntime`。全局 PATH 自动登记，其他项目可复用；原来项目内的数据库服务和数据保留原位，不自动搬迁。npm 的 node_modules、Python venv 和构建产物仍属于项目。
 
 日志、PID、依赖指纹、随机凭据、原始知识文件及图片、Qdrant 数据在 `.runtime/local`。集成验证在 `.runtime/test`，测试库 `lab_equipment_test`；不得替换为正式库。数据库按 UTC 保存，网站按北京时间展示。
 
