@@ -602,6 +602,18 @@ def select_windows_jdk():
     return None
 
 
+def discover_windows_tools():
+    if not IS_WINDOWS or not shutil.which('powershell.exe'):
+        return {}
+    result = subprocess.run(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass',
+                             '-File', str(ROOT / 'scripts/windows_env.ps1'), '-DiscoverOnly'],
+                            capture_output=True, encoding='utf-8-sig', errors='replace', timeout=60)
+    if result.returncode:
+        print('Windows 已安装工具检测未完成：' + result.stderr.strip()[-500:], file=sys.stderr)
+        return {}
+    return json.loads(result.stdout.strip() or '{}')
+
+
 def activate_windows_tools():
     shared_manifest = Path(os.environ.get('ProgramData', 'C:/ProgramData')) / 'BoyiRuntime/environment.json'
     manifest = shared_manifest if shared_manifest.is_file() else ROOT / '.runtime/windows/environment.json'
@@ -612,6 +624,13 @@ def activate_windows_tools():
         for key in ('JAVA_HOME', 'LOCAL_AI_PYTHON'):
             if data.get(key):
                 os.environ[key] = data[key]
+    detected = discover_windows_tools()
+    bins = [str(path) for path in detected.get('bins', []) if Path(path).is_dir()]
+    if bins:
+        os.environ['PATH'] = os.pathsep.join(bins + [os.environ.get('PATH', '')])
+    for key in ('JAVA_HOME', 'LOCAL_REDIS_CLI'):
+        if detected.get(key):
+            os.environ[key] = detected[key]
     java = select_windows_jdk()
     if java:
         os.environ['JAVA_HOME'] = str(java)
@@ -636,7 +655,7 @@ def inspect_environment(env):
         ('npm', 'npm', 'npm', ['--version'], r'(\d+)\.', lambda m: True, '可用'),
         ('maven', 'Maven', 'mvn', ['--version'], r'Apache Maven (\d+)\.(\d+)', lambda m: (int(m[1]),int(m[2])) >= (3,6), '3.6+'),
         ('mysql', 'MySQL 客户端', 'mysql', ['--version'], r'(?:Ver|Distrib) (\d+)\.', lambda m: int(m[1])==8, '8.x'),
-        ('redis', 'Redis 客户端', 'redis-cli', ['--version'], r'(?i)(?:redis|memurai)[^\r\n]*', lambda m: True, '可用'),
+        ('redis', 'Redis 客户端', env.get('LOCAL_REDIS_CLI') or 'redis-cli', ['--version'], r'(?i)(?:redis|memurai)[^\r\n]*', lambda m: True, '可用'),
         ('curl', 'curl', 'curl', ['--version'], r'curl (\d+)', lambda m: True, '可用'),
     ]
     if platform.system()=='Darwin':
@@ -708,7 +727,7 @@ def prepare(env):
         run(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass',
              '-File', ROOT / 'scripts/windows_env.ps1'])
         activate_windows_tools()
-        env.update({key: os.environ[key] for key in ('PATH', 'JAVA_HOME', 'LOCAL_AI_PYTHON') if key in os.environ})
+        env.update({key: os.environ[key] for key in ('PATH', 'JAVA_HOME', 'LOCAL_AI_PYTHON', 'LOCAL_REDIS_CLI') if key in os.environ})
         environment = inspect_environment(env)
     problems=[f'{row["label"]}：{row["state"]}（要求 {row["requirement"]}）' for row in environment if row['state']!='已安装']
     if problems:
@@ -794,7 +813,7 @@ def start(env, mode=None):
             raise RuntimeError('需要 MySQL 8.x')
         run(mysql + ['-e', f'CREATE DATABASE IF NOT EXISTS `{env["DB_NAME"]}` CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci'], env=mysql_env, quiet=True)
         redis_env = dict(env, REDISCLI_AUTH=env.get('REDIS_PASSWORD', ''))
-        check = subprocess.run(['redis-cli', '-h', env['LOCAL_REDIS_HOST'], '-p', env['LOCAL_REDIS_PORT'], 'ping'], env=redis_env, capture_output=True, text=True)
+        check = subprocess.run([env.get('LOCAL_REDIS_CLI') or 'redis-cli', '-h', env['LOCAL_REDIS_HOST'], '-p', env['LOCAL_REDIS_PORT'], 'ping'], env=redis_env, capture_output=True, text=True)
         if check.returncode or check.stdout.strip() != 'PONG':
             raise RuntimeError('Redis 连接失败，请检查 .env.local 的端口与 REDIS_PASSWORD')
         p = ports(env)
@@ -1144,6 +1163,8 @@ def show_accounts(env):
 def menu():
     attempted_mutation = False
     while True:
+        if IS_WINDOWS:
+            activate_windows_tools()
         env = config(initialize=False)
         snapshot = collect_status(env)
         environment = inspect_environment(env)

@@ -54,6 +54,23 @@ class WindowsEnvironmentTests(unittest.TestCase):
             self.assertEqual(first, second)
             self.assertEqual(first, Path(tmp) / 'Programs/BoyiRuntime/qdrant-1.15.5/qdrant.exe')
 
+    def test_discovery_updates_current_process_without_installation_manifest(self):
+        with tempfile.TemporaryDirectory(prefix='boyi discovered ') as tmp:
+            root = Path(tmp)
+            mysql_bin = root / 'installed mysql/bin'
+            maven_bin = root / 'installed maven/bin'
+            mysql_bin.mkdir(parents=True)
+            maven_bin.mkdir(parents=True)
+            found = {'bins': [str(mysql_bin), str(maven_bin)],
+                     'LOCAL_REDIS_CLI': str(root / 'Memurai/memurai-cli.exe')}
+            with patch.object(runner, 'ROOT', root), \
+                    patch.object(runner, 'select_windows_jdk', return_value=None), \
+                    patch.object(runner, 'discover_windows_tools', return_value=found), \
+                    patch.dict(os.environ, {'PATH': 'old', 'ProgramData': str(root / 'ProgramData')}):
+                runner.activate_windows_tools()
+                self.assertEqual(os.environ['PATH'].split(os.pathsep)[:2], [str(mysql_bin), str(maven_bin)])
+                self.assertEqual(os.environ['LOCAL_REDIS_CLI'], found['LOCAL_REDIS_CLI'])
+
     def test_java8_default_does_not_hide_java21_or_newer(self):
         import subprocess
         with tempfile.TemporaryDirectory() as tmp:
@@ -103,6 +120,7 @@ class WindowsEnvironmentTests(unittest.TestCase):
                     'ports': runner.ports(env),
                     'endpoints': {('127.0.0.1', port): False for port in runner.ports(env).values()}}
         with patch.object(runner, 'IS_WINDOWS', True), \
+                patch.object(runner, 'activate_windows_tools') as activate, \
                 patch.object(runner, 'config', return_value=env), \
                 patch.object(runner, 'collect_status', return_value=snapshot), \
                 patch.object(runner, 'inspect_environment', return_value=[]), \
@@ -117,6 +135,7 @@ class WindowsEnvironmentTests(unittest.TestCase):
             self.assertIn('安装 / 修复运行环境', choose.call_args_list[0].args[0])
             setup.assert_called_once()
             accounts.assert_called_once_with(env)
+            self.assertEqual(activate.call_count, 3)
 
 
 if __name__ == '__main__':

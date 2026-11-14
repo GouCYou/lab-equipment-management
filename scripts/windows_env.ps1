@@ -1,4 +1,4 @@
-﻿param([switch]$BootstrapOnly)
+﻿param([switch]$BootstrapOnly, [switch]$DiscoverOnly)
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding
 $root = Split-Path $PSScriptRoot -Parent
@@ -6,7 +6,6 @@ $state = Join-Path $root '.runtime\windows'
 $installRoot = Join-Path $env:ProgramFiles 'BoyiRuntime'
 $sharedState = Join-Path $env:ProgramData 'BoyiRuntime'
 $downloadCache = Join-Path $sharedState 'downloads'
-New-Item -ItemType Directory -Force $state | Out-Null
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 function Refresh-Path {
@@ -38,6 +37,116 @@ function Test-Tool([string]$Binary, [string[]]$Arguments, [string]$Pattern) {
     } catch {
         return $false
     }
+}
+
+function Find-RedisClient {
+    $candidates = @('redis-cli.exe', 'memurai-cli.exe', "$env:ProgramFiles/Memurai/memurai-cli.exe",
+                    "$installRoot/redis-cli/redis-cli.exe")
+    foreach ($registryPath in @('HKLM:/SOFTWARE/Microsoft/Windows/CurrentVersion/Uninstall/*',
+                                'HKLM:/SOFTWARE/WOW6432Node/Microsoft/Windows/CurrentVersion/Uninstall/*')) {
+        $entries = Get-ItemProperty $registryPath -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -match 'Memurai|Redis' }
+        foreach ($entry in $entries) {
+            if ($entry.InstallLocation) {
+                $candidates += Join-Path $entry.InstallLocation 'memurai-cli.exe'
+                $candidates += Join-Path $entry.InstallLocation 'redis-cli.exe'
+            }
+        }
+    }
+    $registeredServices = Get-CimInstance Win32_Service -ErrorAction SilentlyContinue | Where-Object { $_.PathName -match '(memurai|redis-server)\.exe' }
+    foreach ($registeredService in $registeredServices) {
+        if ($registeredService.PathName -match '^\s*"([^"]+\.exe)"|^\s*(.+?\.exe)(?:\s|$)') {
+            $executable = if ($Matches[1]) { $Matches[1] } else { $Matches[2] }
+            $directory = Split-Path $executable
+            $candidates += Join-Path $directory 'memurai-cli.exe'
+            $candidates += Join-Path $directory 'redis-cli.exe'
+        }
+    }
+    foreach ($candidate in ($candidates | Select-Object -Unique)) {
+        if (Test-Tool $candidate @('--version') '(?i)(redis|memurai)') {
+            return (Get-Command $candidate).Source
+        }
+    }
+    return $null
+}
+
+function Install-Memurai {
+    # Explicit MSI options avoid automatic firewall/service custom actions. Service registration follows separately.
+    $installer = Join-Path $downloadCache 'Memurai-Developer-v4.1.2.msi'
+    $expectedHash = '11d009c8e93912e1899b5263d0e7d78907903913e1672b30020612ada6d27446'
+    if (!(Test-Path $installer) -or (Get-FileHash $installer -Algorithm SHA256).Hash -ne $expectedHash) {
+        Write-Host 'Downloading the official Memurai installer ...'
+        Invoke-WebRequest -UseBasicParsing 'https://dist.memurai.com/releases/Memurai-Developer/4.1.2/Memurai-Developer-v4.1.2.msi' -OutFile "$installer.part"
+        if ((Get-FileHash "$installer.part" -Algorithm SHA256).Hash -ne $expectedHash) {
+            Remove-Item -Force "$installer.part"
+            throw 'Memurai installer checksum mismatch.'
+        }
+        Move-Item -Force "$installer.part" $installer
+    }
+    $msiLog = Join-Path $sharedState 'memurai-install.log'
+    $arguments = "/i `"$installer`" /qn /norestart /L*v `"$msiLog`" INSTALL_SERVICE=0 ADD_FIREWALL_RULE=0 ADD_INSTALLFOLDER_TO_PATH=1"
+    $process = Start-Process msiexec.exe -ArgumentList $arguments -Wait -PassThru
+    if ($process.ExitCode -notin @(0, 1641, 3010)) {
+        if (Test-Path $msiLog) {
+            Select-String -Path $msiLog -Pattern 'Return value 3|Error [0-9]+|error|failed' -Context 2,2 | Select-Object -Last 12 | Out-String | Write-Host
+        }
+        throw "Memurai MSI failed (Windows Installer code $($process.ExitCode)). Detailed log: $msiLog"
+    }
+    Refresh-Path
+    if ($process.ExitCode -in @(1641, 3010)) { Write-Host 'Memurai installation requests a Windows restart if the service cannot start.' }
+}
+
+function Find-MySqlClient {
+    $candidates = @('mysql.exe')
+    foreach ($base in @($env:ProgramFiles, ${env:ProgramFiles(x86)}, $env:MYSQL_HOME, $env:MYSQL_BASEDIR)) {
+        if (!$base) { continue }
+        foreach ($pattern in @('bin/mysql.exe', 'MySQL/MySQL Server */bin/mysql.exe', 'BoyiRuntime/mysql*/mysql-*/bin/mysql.exe')) {
+            $candidates += @(Get-ChildItem (Join-Path $base $pattern) -File -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
+        }
+    }
+    foreach ($registryPath in @('HKLM:/SOFTWARE/MySQL AB/*', 'HKLM:/SOFTWARE/WOW6432Node/MySQL AB/*')) {
+        foreach ($entry in (Get-ItemProperty $registryPath -ErrorAction SilentlyContinue)) {
+            if ($entry.Location) { $candidates += Join-Path $entry.Location 'bin/mysql.exe' }
+        }
+    }
+    $databaseServices = Get-CimInstance Win32_Service -ErrorAction SilentlyContinue | Where-Object { $_.PathName -match 'mysqld\.exe' }
+    foreach ($databaseService in $databaseServices) {
+        if ($databaseService.PathName -match '^\s*"([^"]+\.exe)"|^\s*(.+?\.exe)(?:\s|$)') {
+            $serverExecutable = if ($Matches[1]) { $Matches[1] } else { $Matches[2] }
+            $candidates += Join-Path (Split-Path $serverExecutable) 'mysql.exe'
+        }
+    }
+    $fallback = $null
+    foreach ($candidate in ($candidates | Select-Object -Unique)) {
+        $command = Get-Command $candidate -ErrorAction SilentlyContinue
+        if (!$command) { continue }
+        if (!$fallback) { $fallback = $command.Source }
+        if (Test-Tool $candidate @('--version') '(?:Ver|Distrib) 8\.') { return $command.Source }
+    }
+    return $fallback
+}
+
+function Get-InstalledToolEnvironment {
+    $directories = @()
+    foreach ($base in @($env:ProgramFiles, ${env:ProgramFiles(x86)})) {
+        if (!$base) { continue }
+        foreach ($pattern in @('BoyiRuntime/node*/node-*', 'BoyiRuntime/maven/apache-maven-*/bin',
+                               'BoyiRuntime/mysql*/mysql-*/bin', 'BoyiRuntime/redis-cli',
+                               'Apache/Maven/*/bin', 'Apache/maven/bin', 'Apache Software Foundation/apache-maven-*/bin',
+                               'apache-maven-*/bin', 'Maven/bin', 'nodejs', 'Memurai')) {
+            $directories += @(Get-ChildItem (Join-Path $base $pattern) -Directory -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
+        }
+    }
+    foreach ($mavenDirectory in @($env:MAVEN_HOME, $env:M2_HOME)) {
+        if ($mavenDirectory -and (Test-Path "$mavenDirectory/bin/mvn.cmd")) { $directories += Join-Path $mavenDirectory 'bin' }
+    }
+    $selectedJava = Find-Jdk
+    if ($selectedJava) { $directories = @("$selectedJava/bin") + $directories; $env:JAVA_HOME=$selectedJava }
+    $env:Path = ($directories -join ';') + ';' + $env:Path
+    $mysqlClient = Find-MySqlClient
+    $redisClient = Find-RedisClient
+    if ($mysqlClient) { $directories += Split-Path $mysqlClient }
+    if ($redisClient) { $directories += Split-Path $redisClient }
+    return @{ bins=@($directories | Select-Object -Unique); JAVA_HOME=$selectedJava; LOCAL_REDIS_CLI=$redisClient }
 }
 
 function Find-Python {
@@ -97,6 +206,13 @@ function Expand-Package([string]$Url, [string]$Directory) {
     return $target
 }
 
+if ($DiscoverOnly) {
+    Refresh-Path
+    Get-InstalledToolEnvironment | ConvertTo-Json -Depth 4 -Compress
+    exit 0
+}
+New-Item -ItemType Directory -Force $state | Out-Null
+
 $transcriptStarted = $false
 $setupLog = Join-Path $state 'setup.log'
 $errorFile = Join-Path $state 'install-error.txt'
@@ -121,6 +237,8 @@ try {
     $transcriptStarted = $true
     if (Test-Path $errorFile) { Remove-Item -Force $errorFile }
     Refresh-Path
+    $detectedEnvironment = Get-InstalledToolEnvironment
+    $env:Path = ($detectedEnvironment.bins -join ';') + ';' + $env:Path
     $python = Find-Python
     if (!$python) { Install-Package 'Python.Python.3.12'; $python = Find-Python }
     if (!$python) { throw 'Python was installed but could not be located. Reopen run.bat.' }
@@ -158,10 +276,8 @@ try {
         $bins += Join-Path $mavenDir 'apache-maven-3.9.9\bin'
     }
 
-    $mysql = Get-Command mysql.exe -ErrorAction SilentlyContinue
-    $mysqlBin = if ($mysql) { Split-Path $mysql.Source } else {
-        Get-ChildItem "$env:ProgramFiles\MySQL\MySQL Server 8*\bin\mysql.exe" -ErrorAction SilentlyContinue | Select-Object -First 1 | ForEach-Object { Split-Path $_.FullName }
-    }
+    $mysqlClient = Find-MySqlClient
+    $mysqlBin = if ($mysqlClient) { Split-Path $mysqlClient } else { $null }
     if (!$mysqlBin -or !(Test-Tool (Join-Path $mysqlBin 'mysql.exe') @('--version') '(?:Ver|Distrib) 8\.')) {
         if (!(Test-Path "$env:WINDIR\System32\vcruntime140_1.dll")) { Install-Package 'Microsoft.VCRedist.2015+.x64' }
         $mysqlDir = Expand-Package 'https://dev.mysql.com/get/Downloads/MySQL-8.4/mysql-8.4.8-winx64.zip' 'mysql84'
@@ -191,26 +307,37 @@ try {
     }
     if ($services.Count -eq 1 -and $services[0].Status -ne 'Running') { Start-Service $services[0].Name }
 
-    $redisCompatible = Test-Tool 'redis-cli.exe' @('--version') '(?i)(redis|memurai)'
-    $memuraiCli = "$env:ProgramFiles\Memurai\memurai-cli.exe"
-    if (!$redisCompatible -and !(Test-Tool $memuraiCli @('--version') '(?i)(redis|memurai)')) {
-        Install-Package 'Memurai.MemuraiDeveloper' -ForceInstall
+    $redisClient = Find-RedisClient
+    if (!$redisClient) {
+        Install-Memurai
+        $redisClient = Find-RedisClient
     }
-    if (!$redisCompatible) {
-        if (!(Test-Path $memuraiCli)) { throw 'Memurai client not found.' }
+    if (!$redisClient) { throw 'Redis-compatible client is still unavailable after installation. See memurai-install.log.' }
+    Write-Host "Using Redis-compatible client: $redisClient"
+    if ((Split-Path $redisClient -Leaf) -ne 'redis-cli.exe') {
         $cliDir = Join-Path $installRoot 'redis-cli'
         New-Item -ItemType Directory -Force $cliDir | Out-Null
-        Copy-Item $memuraiCli "$cliDir\redis-cli.exe" -Force
-        # Preserve any DLL dependencies distributed alongside the client.
-        Get-ChildItem "$env:ProgramFiles\Memurai\*.dll" -ErrorAction SilentlyContinue | Copy-Item -Destination $cliDir -Force
+        Copy-Item $redisClient "$cliDir/redis-cli.exe" -Force
+        Get-ChildItem (Join-Path (Split-Path $redisClient) '*.dll') -ErrorAction SilentlyContinue | Copy-Item -Destination $cliDir -Force
         $bins += $cliDir
-    }
-    if (!$redisCompatible -and !(Test-Tool (Join-Path $cliDir 'redis-cli.exe') @('--version') '(?i)(redis|memurai)')) {
-        throw 'Installed Redis-compatible client is not usable. See the version probe in setup.log.'
+    } else {
+        $bins += Split-Path $redisClient
     }
     $redisServices = @(Get-Service | Where-Object { $_.Name -match 'redis|memurai' })
+    if (!$redisServices.Count) {
+        $memuraiDirectory = Split-Path $redisClient
+        if (!(Test-Path "$memuraiDirectory/memurai.exe")) { $memuraiDirectory = "$env:ProgramFiles/Memurai" }
+        $server = Join-Path $memuraiDirectory 'memurai.exe'
+        $configuration = Join-Path $memuraiDirectory 'memurai.conf'
+        if (!(Test-Path $server) -or !(Test-Path $configuration)) { throw 'Redis server/configuration not found. Client installation alone cannot start a server.' }
+        $ErrorActionPreference = 'Continue'
+        & $server --service-install $configuration
+        $serviceExitCode = $LASTEXITCODE
+        $ErrorActionPreference = 'Stop'
+        if ($serviceExitCode -ne 0) { throw "Memurai service registration failed (exit $serviceExitCode)." }
+        $redisServices = @(Get-Service Memurai)
+    }
     if ($redisServices.Count -eq 1 -and $redisServices[0].Status -ne 'Running') { Start-Service $redisServices[0].Name }
-    if (!$redisServices.Count) { throw 'Redis-compatible service not found.' }
 
     $manifest = @{ bins=$bins; JAVA_HOME=$javaHome; LOCAL_AI_PYTHON=$python }
     $manifestJson = $manifest | ConvertTo-Json

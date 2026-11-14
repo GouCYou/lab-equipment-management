@@ -74,6 +74,97 @@ Expand-Package 'https://unused.example/package.zip' 'maven'
             self.assertEqual(output.strip(), str(base / 'ProgramFiles/BoyiRuntime/maven'))
             self.assertFalse((base / 'project').exists())
 
+    def test_memurai_installer_uses_separate_service_setup_and_reports_native_error(self):
+        with tempfile.TemporaryDirectory(prefix='boyi msi ') as tmp:
+            (Path(tmp) / 'Memurai-Developer-v4.1.2.msi').touch()
+            self.run_script('''
+$ErrorActionPreference='Stop'
+$tokens=$null; $issues=$null
+$ast=[System.Management.Automation.Language.Parser]::ParseFile($env:BOYI_INSTALLER_PATH,[ref]$tokens,[ref]$issues)
+$fn=$ast.Find({param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Install-Memurai'},$true)
+Invoke-Expression $fn.Extent.Text
+$downloadCache=$env:BOYI_TEST_ROOT; $sharedState=$env:BOYI_TEST_ROOT
+function Get-FileHash { [pscustomobject]@{Hash='11d009c8e93912e1899b5263d0e7d78907903913e1672b30020612ada6d27446'} }
+function Invoke-WebRequest { throw 'Valid cached MSI should be reused' }
+function Refresh-Path { }
+function Start-Process {
+    param($FilePath,$ArgumentList,[switch]$Wait,[switch]$PassThru)
+    if ($FilePath -ne 'msiexec.exe') { throw 'Unexpected installer' }
+    if ($ArgumentList -notmatch 'INSTALL_SERVICE=0' -or $ArgumentList -notmatch 'ADD_FIREWALL_RULE=0' -or $ArgumentList -notmatch '/L\\*v') { throw 'Missing explicit MSI options/log' }
+    [pscustomobject]@{ExitCode=$global:testInstallerExitCode}
+}
+$global:testInstallerExitCode=0
+Install-Memurai
+$global:testInstallerExitCode=1603
+$observedFailure=$false
+try { Install-Memurai } catch {
+    if ($_.Exception.Message -notmatch '1603' -or $_.Exception.Message -notmatch 'memurai-install.log') { throw }
+    $observedFailure=$true
+}
+if (!$observedFailure) { throw 'MSI failure swallowed' }
+exit 0
+''', {'BOYI_TEST_ROOT': tmp})
+
+    @unittest.skipIf(os.name == 'nt', 'Mock MySQL executable uses a POSIX script')
+    def test_discovers_mysql_service_directory_and_partially_installed_maven(self):
+        with tempfile.TemporaryDirectory(prefix='boyi detection ') as tmp:
+            base = Path(tmp)
+            maven_bin = base / 'ProgramFiles/BoyiRuntime/maven/apache-maven-3.9.9/bin'
+            maven_bin.mkdir(parents=True)
+            (maven_bin / 'mvn.cmd').touch()
+            mysql_bin = base / 'Custom MySQL/bin'
+            mysql_bin.mkdir(parents=True)
+            mysql = mysql_bin / 'mysql.exe'
+            mysql.write_text('#!/bin/sh\necho "mysql Ver 8.0.40 for Win64"\n')
+            mysql.chmod(0o755)
+            output = self.run_script('''
+$ErrorActionPreference='Stop'
+$tokens=$null; $issues=$null
+$ast=[System.Management.Automation.Language.Parser]::ParseFile($env:BOYI_INSTALLER_PATH,[ref]$tokens,[ref]$issues)
+foreach ($functionName in @('Test-Tool','Find-MySqlClient','Get-InstalledToolEnvironment')) {
+    $fn=$ast.Find({param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $functionName},$true)
+    Invoke-Expression $fn.Extent.Text
+}
+$root=Join-Path $env:BOYI_TEST_ROOT 'project'
+$installRoot=Join-Path $env:ProgramFiles 'BoyiRuntime'
+function Find-Jdk { $null }
+function Find-RedisClient { $null }
+function Get-ItemProperty { @() }
+function Get-CimInstance { [pscustomobject]@{PathName=('"' + (Join-Path $env:BOYI_TEST_ROOT 'Custom MySQL/bin/mysqld.exe') + '" --defaults-file="some file.ini"')} }
+Get-InstalledToolEnvironment | ConvertTo-Json -Depth 4 -Compress
+''', {'BOYI_TEST_ROOT': tmp, 'ProgramFiles': str(base / 'ProgramFiles'),
+      'ProgramFiles(x86)': str(base / 'ProgramFiles-x86')})
+            import json
+            found = json.loads(output)
+            self.assertIn(str(maven_bin), found['bins'])
+            self.assertIn(str(mysql_bin), found['bins'])
+            self.assertFalse((base / 'project').exists())
+
+    @unittest.skipIf(os.name == 'nt', 'Mock executable uses a POSIX script')
+    def test_existing_custom_memurai_installation_is_discovered(self):
+        with tempfile.TemporaryDirectory(prefix='boyi redis ') as tmp:
+            base = Path(tmp)
+            custom = base / 'custom global install'
+            custom.mkdir()
+            executable = custom / 'memurai-cli.exe'
+            executable.write_text('#!/bin/sh\necho "Memurai CLI version 4.1.2"\n')
+            executable.chmod(0o755)
+            output = self.run_script('''
+$ErrorActionPreference='Stop'
+$tokens=$null; $issues=$null
+$ast=[System.Management.Automation.Language.Parser]::ParseFile($env:BOYI_INSTALLER_PATH,[ref]$tokens,[ref]$issues)
+foreach ($functionName in @('Test-Tool','Find-RedisClient')) {
+    $fn=$ast.Find({param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $functionName},$true)
+    Invoke-Expression $fn.Extent.Text
+}
+$root=Join-Path $env:BOYI_TEST_ROOT 'project'
+$installRoot=Join-Path $env:BOYI_TEST_ROOT 'ProgramFiles/BoyiRuntime'
+function Get-ItemProperty { [pscustomobject]@{DisplayName='Memurai'; InstallLocation=(Join-Path $env:BOYI_TEST_ROOT 'custom global install')} }
+function Get-CimInstance { @() }
+Find-RedisClient
+''', {'BOYI_TEST_ROOT': tmp, 'ProgramFiles': str(base / 'ProgramFiles')})
+            self.assertEqual(output.strip(), str(executable))
+
     @unittest.skipIf(os.name == 'nt', 'Mock executables use POSIX scripts')
     def test_real_find_jdk_selects_21_with_home_set_to_8(self):
         with tempfile.TemporaryDirectory(prefix='boyi jdk ') as tmp:
