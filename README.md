@@ -14,7 +14,7 @@ Vue 3 业务工作台、Spring Boot 业务后端、Python 单 Agent 与维修知
 bash run.sh
 ```
 
-macOS 首次使用可以双击 `setup-mac.command`，或执行 `bash run.sh setup`。Windows 双击 `run.bat`。菜单支持方向键、数字定位、Enter 确认、Esc/Q/Ctrl+C 取消；打开菜单不自动启停服务。
+macOS 首次使用可以双击 `setup-mac.command`，或执行 `bash run.sh setup`。Windows x64 双击 `run.bat`，选择“安装 / 修复运行环境”一键安装；直接启动也会自动补齐缺失环境。首次安装需要联网、winget，并允许管理员授权；也可执行 `run.bat setup`。菜单支持方向键、数字定位、Enter 确认、Esc/Q/Ctrl+C 取消；打开菜单不自动启停服务。
 
 ```sh
 bash run.sh check-env

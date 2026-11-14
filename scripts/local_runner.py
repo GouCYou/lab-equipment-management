@@ -544,6 +544,82 @@ def activate_macos_tools():
     os.environ['PATH']=os.pathsep.join([str(path) for path in bins if path.is_dir()]+[os.environ.get('PATH','')])
 
 
+def select_windows_jdk():
+    """Select a usable JDK >=21 even when PATH/JAVA_HOME still point to Java 8."""
+    candidates = set()
+    if os.environ.get('JAVA_HOME'):
+        candidates.add(Path(os.environ['JAVA_HOME']))
+    for binary in ('javac', 'java'):
+        executable = shutil.which(binary)
+        if executable:
+            candidates.add(Path(executable).parent.parent)
+    for variable in ('ProgramFiles', 'ProgramW6432', 'LOCALAPPDATA'):
+        base = os.environ.get(variable)
+        if not base:
+            continue
+        for vendor in ('Java', 'Eclipse Adoptium', 'Microsoft', 'Amazon Corretto', 'BellSoft', 'Programs/Eclipse Adoptium'):
+            directory = Path(base) / vendor
+            if directory.is_dir():
+                candidates.update(path for path in directory.glob('*') if path.is_dir())
+    if IS_WINDOWS:
+        # Also cover custom installation locations registered by Oracle/Adoptium installers.
+        import winreg
+        for root in ('SOFTWARE\\JavaSoft\\JDK', 'SOFTWARE\\JavaSoft\\Java Development Kit',
+                     'SOFTWARE\\Eclipse Adoptium\\JDK'):
+            try:
+                with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, root) as key:
+                    for index in range(winreg.QueryInfoKey(key)[0]):
+                        version = winreg.EnumKey(key, index)
+                        for suffix, field in (('', 'JavaHome'), ('\\hotspot\\MSI', 'Path')):
+                            try:
+                                with winreg.OpenKey(key, version + suffix) as entry:
+                                    candidates.add(Path(winreg.QueryValueEx(entry, field)[0]))
+                            except OSError:
+                                pass
+            except OSError:
+                pass
+    matches = []
+    for home in candidates:
+        if not (home / 'bin/java.exe').is_file() or not (home / 'bin/javac.exe').is_file():
+            continue
+        try:
+            probe = subprocess.run([str(home / 'bin/java.exe'), '-version'], capture_output=True,
+                                   text=True, errors='replace', timeout=8)
+            match = re.search(r'version "(\d+)(?:\.(\d+))?(?:\.(\d+))?', probe.stdout + probe.stderr)
+            if probe.returncode == 0 and match and int(match[1]) >= 21:
+                matches.append((tuple(int(part or 0) for part in match.groups()), str(home)))
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    if matches:
+        return Path(max(matches)[1])
+    return None
+
+
+def activate_windows_tools():
+    manifest = ROOT / '.runtime/windows/environment.json'
+    if manifest.is_file():
+        data = json.loads(manifest.read_text(encoding='utf-8-sig'))
+        bins = [str(path) for path in data.get('bins', []) if Path(path).is_dir()]
+        os.environ['PATH'] = os.pathsep.join(bins + [os.environ.get('PATH', '')])
+        for key in ('JAVA_HOME', 'LOCAL_AI_PYTHON'):
+            if data.get(key):
+                os.environ[key] = data[key]
+    java = select_windows_jdk()
+    if java:
+        os.environ['JAVA_HOME'] = str(java)
+        os.environ['PATH'] = str(java / 'bin') + os.pathsep + os.environ.get('PATH', '')
+
+
+def setup_windows_environment():
+    run(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass',
+         '-File', ROOT / 'scripts/windows_env.ps1'])
+    activate_windows_tools()
+    env = config()
+    prepare(env)
+    qdrant_bin(env)
+    print('运行环境与项目依赖已安装，可直接启动项目。')
+
+
 def inspect_environment(env):
     tools = [
         ('python', 'Python', env.get('LOCAL_AI_PYTHON') or shutil.which('python3.12') or sys.executable, ['--version'], r'Python (\d+)\.(\d+)', lambda m: (int(m[1]),int(m[2])) >= (3,11), '3.11+，推荐 3.12'),
@@ -552,7 +628,7 @@ def inspect_environment(env):
         ('npm', 'npm', 'npm', ['--version'], r'(\d+)\.', lambda m: True, '可用'),
         ('maven', 'Maven', 'mvn', ['--version'], r'Apache Maven (\d+)\.(\d+)', lambda m: (int(m[1]),int(m[2])) >= (3,6), '3.6+'),
         ('mysql', 'MySQL 客户端', 'mysql', ['--version'], r'(?:Ver|Distrib) (\d+)\.', lambda m: int(m[1])==8, '8.x'),
-        ('redis', 'Redis 客户端', 'redis-cli', ['--version'], r'redis-cli (\d+)', lambda m: True, '可用'),
+        ('redis', 'Redis 客户端', 'redis-cli', ['--version'], r'(?:redis-cli|memurai-cli) (\d+)', lambda m: True, '可用'),
         ('curl', 'curl', 'curl', ['--version'], r'curl (\d+)', lambda m: True, '可用'),
     ]
     if platform.system()=='Darwin':
@@ -619,6 +695,13 @@ def show_environment_details(environment,dependencies):
 
 def prepare(env):
     environment=inspect_environment(env)
+    if IS_WINDOWS and any(row['state'] != '已安装' for row in environment):
+        print('正在自动安装缺失的 Windows 运行环境 …', flush=True)
+        run(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass',
+             '-File', ROOT / 'scripts/windows_env.ps1'])
+        activate_windows_tools()
+        env.update({key: os.environ[key] for key in ('PATH', 'JAVA_HOME', 'LOCAL_AI_PYTHON') if key in os.environ})
+        environment = inspect_environment(env)
     problems=[f'{row["label"]}：{row["state"]}（要求 {row["requirement"]}）' for row in environment if row['state']!='已安装']
     if problems:
         hint='；macOS 可运行 bash run.sh setup 自动安装' if platform.system()=='Darwin' else ''
@@ -1068,7 +1151,7 @@ def menu():
                    '检测到服务端口已监听，进程归属待确认。' if listening else '项目未启动。')
         print(paint('\n' + summary, '1;32' if running else '33'))
         options=['停止项目' if running else '启动项目', '刷新状态', '查看日志', '取消 / 退出', '环境与依赖详情']
-        if platform.system()=='Darwin': options.append('安装 / 修复运行环境')
+        if platform.system()=='Darwin' or IS_WINDOWS: options.append('安装 / 修复运行环境')
         options.append('查看各角色账户')
         choice = read_menu_choice(options)
         if choice in ('4', 'q', 'Q'):
@@ -1090,11 +1173,15 @@ def menu():
                 wait_for_menu_return()
             elif choice == '2':
                 continue
-            elif choice == '6' and platform.system()=='Darwin':
+            elif choice == '6' and (platform.system()=='Darwin' or IS_WINDOWS):
                 clear_menu_screen()
                 with installation_display(env,environment,dependencies):
-                    run(['bash',ROOT/'run.sh','setup'])
-                activate_macos_tools()
+                    if IS_WINDOWS:
+                        setup_windows_environment()
+                    else:
+                        run(['bash',ROOT/'run.sh','setup'])
+                if not IS_WINDOWS:
+                    activate_macos_tools()
                 print('运行环境安装完成，菜单已自动采用已安装的版本。')
                 wait_for_menu_return()
             elif choice == '5':
@@ -1115,11 +1202,17 @@ def menu():
 def main():
     global COLOR
     parser = argparse.ArgumentParser(description='本地前后端启停；MySQL、Redis 为常驻服务')
-    parser.add_argument('command', nargs='?', choices=['menu', 'toggle', 'start', 'stop', 'status', 'logs', 'accounts'], default='menu')
+    parser.add_argument('command', nargs='?', choices=['menu', 'toggle', 'start', 'stop', 'status', 'logs', 'accounts', 'setup'], default='menu')
     parser.add_argument('service', nargs='?', choices=APP_ORDER)
     args = parser.parse_args()
     COLOR = enable_ansi()
-    if args.command == 'accounts':
+    if IS_WINDOWS:
+        activate_windows_tools()
+    if args.command == 'setup':
+        if not IS_WINDOWS:
+            raise RuntimeError('macOS 请使用 bash run.sh setup')
+        setup_windows_environment()
+    elif args.command == 'accounts':
         show_accounts(config(initialize=False))
     elif args.command == 'menu':
         menu()

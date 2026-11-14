@@ -41,6 +41,14 @@ popd
 exit /b %RUNNER_EXIT_CODE%
 
 :missing_python
+echo 正在安装启动菜单所需的 Python ...
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\windows_env.ps1" -BootstrapOnly
+if errorlevel 1 goto install_failed
+set /p RUNNER_PYTHON=<"%~dp0.runtime\windows\python-path.txt"
+set "RUNNER_PYTHON_ARGS="
+goto run_controller
+
+:install_failed
 echo 需要 Python 3.11 或更高版本，推荐安装 Python 3.12 并勾选添加到 PATH。
 echo 也可以通过 PYTHON 指定已安装的解释器完整路径。
 if "%~1"=="" pause
