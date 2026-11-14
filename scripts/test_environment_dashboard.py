@@ -36,6 +36,20 @@ class DashboardTests(unittest.TestCase):
             self.assertEqual(next(r for r in rows if r['id']=='java')['state'],'版本不兼容' if old else '已安装')
             self.assertTrue(all(r['state']=='已安装' for r in rows if r['id']!='java'))
 
+    def test_memurai_version_formats_are_compatible(self):
+        for version in ('memurai-cli 4.1.2', 'Memurai CLI version 4.1.2', 'redis-cli 7.2.0 (Memurai)'):
+            original_probe = self.versions()
+            def probe(argv, **kwargs):
+                if Path(argv[0]).name == 'redis-cli':
+                    return subprocess.CompletedProcess(argv, 0, stdout=version, stderr='')
+                return original_probe(argv, **kwargs)
+            with patch.object(runner.platform, 'system', return_value='Linux'), \
+                    patch.object(runner, 'IS_WINDOWS', False), \
+                    patch.object(runner.shutil, 'which', side_effect=lambda name: str(name) if str(name).startswith('/') else '/tools/' + str(name)), \
+                    patch.object(runner.subprocess, 'run', side_effect=probe):
+                rows = runner.inspect_environment({})
+            self.assertEqual(next(row for row in rows if row['id'] == 'redis')['state'], '已安装', version)
+
     def test_reports_missing_tools_and_timeout_without_crashing_menu(self):
         def probe(argv,**kwargs):raise subprocess.TimeoutExpired(argv,8)
         with patch.object(runner.platform,'system',return_value='Linux'),patch.object(runner,'IS_WINDOWS',False), \

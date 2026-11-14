@@ -45,3 +45,5 @@ AI 只调用已配置的聊天模型；缺少配置时明确提示，不生成�
 菜单可选择“查看各角色账户”（macOS 第 7 项，Windows 第 7 项，Linux 第 6 项），或运行 `bash run.sh accounts` / `run.bat accounts`。默认用户名：admin、student、labstaff、technician；登录密码统一为 123456。
 
 Windows 安装故障详情同时保存在 `.runtime/windows/setup.log` 和 `.runtime/windows/install-error.txt`；管理员窗口的输出会在结束后回传主菜单，不再只显示退出码。
+
+2026-11-14：Windows 安装器按版本探测 Node/npm、Maven、MySQL 客户端和 Redis 客户端，缺失、不可用或版本不兼容时安装兼容工具并优先用于项目。Redis 版本输出兼容 redis-cli 和 Memurai 多种格式，避免安装成功后被误判。69 项启动器检查通过（含实际 PowerShell 解析及版本探测）；Windows 全流程仍需实机复验。

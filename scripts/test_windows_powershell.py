@@ -37,6 +37,24 @@ foreach ($loop in $loops) {
 exit 0
 ''')
 
+    def test_tool_compatibility_probes_accept_memurai_and_reject_old_maven(self):
+        self.run_script('''
+$ErrorActionPreference='Stop'
+$tokens=$null; $issues=$null
+$ast=[System.Management.Automation.Language.Parser]::ParseFile($env:BOYI_INSTALLER_PATH,[ref]$tokens,[ref]$issues)
+$fn=$ast.Find({param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Test-Tool'},$true)
+Invoke-Expression $fn.Extent.Text
+function redis-cli.exe { 'Memurai CLI version 4.1.2'; $global:LASTEXITCODE=0 }
+function mvn.cmd { 'Apache Maven 3.5.4'; $global:LASTEXITCODE=0 }
+function node.exe { 'v18.20.0'; $global:LASTEXITCODE=0 }
+if (!(Test-Tool 'redis-cli.exe' @('--version') '(?i)(redis|memurai)')) { throw 'Memurai rejected' }
+if (Test-Tool 'mvn.cmd' @('--version') 'Apache Maven (?:3\\.(?:[6-9]|[1-9][0-9])\\.|[4-9]\\.)') { throw 'Old Maven accepted' }
+if (Test-Tool 'node.exe' @('--version') '^v(?:22\\.(?:1[2-9]|[2-9][0-9])|2[3-9]\\.|[3-9][0-9]\\.)') { throw 'Old Node accepted' }
+function mvn.cmd { 'Apache Maven 3.9.9'; $global:LASTEXITCODE=0 }
+if (!(Test-Tool 'mvn.cmd' @('--version') 'Apache Maven (?:3\\.(?:[6-9]|[1-9][0-9])\\.|[4-9]\\.)')) { throw 'Compatible Maven rejected' }
+exit 0
+''')
+
     @unittest.skipIf(os.name == 'nt', 'Mock executables use POSIX scripts')
     def test_real_find_jdk_selects_21_with_home_set_to_8(self):
         with tempfile.TemporaryDirectory(prefix='boyi jdk ') as tmp:

@@ -9,15 +9,30 @@ New-Item -ItemType Directory -Force $state | Out-Null
 function Refresh-Path {
     $env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User') + ';' + $env:Path
 }
-function Install-Package([string]$Id) {
+function Install-Package([string]$Id, [switch]$ForceInstall) {
     if (!(Get-Command winget.exe -ErrorAction SilentlyContinue)) {
         throw 'Please install Microsoft App Installer (winget) from Microsoft Store, then run run.bat again.'
     }
     Write-Host "Installing $Id ..."
-    & winget.exe install --id $Id --exact --source winget --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
+    $extraArguments = @()
+    if ($ForceInstall) { $extraArguments += '--force' }
+    & winget.exe install @extraArguments --id $Id --exact --source winget --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
     if ($LASTEXITCODE -ne 0) { throw "Installation failed: $Id (exit $LASTEXITCODE). Run again to resume." }
     Refresh-Path
 }
+function Test-Tool([string]$Binary, [string[]]$Arguments, [string]$Pattern) {
+    if (!(Get-Command $Binary -ErrorAction SilentlyContinue)) { return $false }
+    try {
+        # Version probes may write their normal output to stderr in Windows PowerShell 5.1.
+        $ErrorActionPreference = 'Continue'
+        $output = (& $Binary @Arguments 2>&1 | Out-String)
+        $exitCode = $LASTEXITCODE
+        return ($exitCode -eq 0 -and $output -match $Pattern)
+    } catch {
+        return $false
+    }
+}
+
 function Find-Python {
     foreach ($candidate in @("$env:LOCALAPPDATA\Programs\Python\Python312\python.exe", "$env:ProgramFiles\Python312\python.exe", (Get-Command python.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source))) {
         if ($candidate -and (Test-Path $candidate)) {
@@ -114,14 +129,15 @@ try {
     if (!$javaHome) { throw 'Java 21 JDK not found.' }
     $bins = @("$javaHome\bin", (Split-Path $python))
 
-    $node = Get-Command node.exe -ErrorAction SilentlyContinue
-    $nodeVersion = if ($node) { (& node.exe --version) } else { '' }
-    if ($nodeVersion -notmatch '^v(2[4-9]|[3-9][0-9])\.') {
+    if (!(Test-Tool 'node.exe' @('--version') '^v(?:22\.(?:1[2-9]|[2-9][0-9])|2[3-9]\.|[3-9][0-9]\.)') -or
+        !(Test-Tool 'npm.cmd' @('--version') '\d+\.')) {
         $nodeDir = Expand-Package 'https://nodejs.org/dist/v24.11.1/node-v24.11.1-win-x64.zip' 'node24'
         $bins += Join-Path $nodeDir 'node-v24.11.1-win-x64'
     }
-    $maven = Get-Command mvn.cmd -ErrorAction SilentlyContinue
-    if (!$maven) {
+    # Prefer the selected JDK during Maven probing as well as during the build.
+    $env:JAVA_HOME = $javaHome
+    $env:Path = "$javaHome\bin;" + $env:Path
+    if (!(Test-Tool 'mvn.cmd' @('--version') 'Apache Maven (?:3\.(?:[6-9]|[1-9][0-9])\.|[4-9]\.)')) {
         $mavenDir = Expand-Package 'https://archive.apache.org/dist/maven/maven-3/3.9.9/binaries/apache-maven-3.9.9-bin.zip' 'maven'
         $bins += Join-Path $mavenDir 'apache-maven-3.9.9\bin'
     }
@@ -130,8 +146,8 @@ try {
     $mysqlBin = if ($mysql) { Split-Path $mysql.Source } else {
         Get-ChildItem "$env:ProgramFiles\MySQL\MySQL Server 8*\bin\mysql.exe" -ErrorAction SilentlyContinue | Select-Object -First 1 | ForEach-Object { Split-Path $_.FullName }
     }
-    if (!$mysqlBin) {
-        Install-Package 'Microsoft.VCRedist.2015+.x64'
+    if (!$mysqlBin -or !(Test-Tool (Join-Path $mysqlBin 'mysql.exe') @('--version') '(?:Ver|Distrib) 8\.')) {
+        if (!(Test-Path "$env:WINDIR\System32\vcruntime140_1.dll")) { Install-Package 'Microsoft.VCRedist.2015+.x64' }
         $mysqlDir = Expand-Package 'https://dev.mysql.com/get/Downloads/MySQL-8.4/mysql-8.4.8-winx64.zip' 'mysql84'
         $mysqlBin = Join-Path $mysqlDir 'mysql-8.4.8-winx64\bin'
     }
@@ -159,10 +175,12 @@ try {
     }
     if ($services.Count -eq 1 -and $services[0].Status -ne 'Running') { Start-Service $services[0].Name }
 
-    $redis = Get-Command redis-cli.exe -ErrorAction SilentlyContinue
+    $redisCompatible = Test-Tool 'redis-cli.exe' @('--version') '(?i)(redis|memurai)'
     $memuraiCli = "$env:ProgramFiles\Memurai\memurai-cli.exe"
-    if (!$redis -and !(Test-Path $memuraiCli)) { Install-Package 'Memurai.MemuraiDeveloper' }
-    if (!$redis) {
+    if (!$redisCompatible -and !(Test-Tool $memuraiCli @('--version') '(?i)(redis|memurai)')) {
+        Install-Package 'Memurai.MemuraiDeveloper' -ForceInstall
+    }
+    if (!$redisCompatible) {
         if (!(Test-Path $memuraiCli)) { throw 'Memurai client not found.' }
         $cliDir = Join-Path $state 'redis-cli'
         New-Item -ItemType Directory -Force $cliDir | Out-Null
@@ -170,6 +188,9 @@ try {
         # Preserve any DLL dependencies distributed alongside the client.
         Get-ChildItem "$env:ProgramFiles\Memurai\*.dll" -ErrorAction SilentlyContinue | Copy-Item -Destination $cliDir -Force
         $bins += $cliDir
+    }
+    if (!$redisCompatible -and !(Test-Tool (Join-Path $cliDir 'redis-cli.exe') @('--version') '(?i)(redis|memurai)')) {
+        throw 'Installed Redis-compatible client is not usable. See the version probe in setup.log.'
     }
     $redisServices = @(Get-Service | Where-Object { $_.Name -match 'redis|memurai' })
     if ($redisServices.Count -eq 1 -and $redisServices[0].Status -ne 'Running') { Start-Service $redisServices[0].Name }

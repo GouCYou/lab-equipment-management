@@ -628,7 +628,7 @@ def inspect_environment(env):
         ('npm', 'npm', 'npm', ['--version'], r'(\d+)\.', lambda m: True, '可用'),
         ('maven', 'Maven', 'mvn', ['--version'], r'Apache Maven (\d+)\.(\d+)', lambda m: (int(m[1]),int(m[2])) >= (3,6), '3.6+'),
         ('mysql', 'MySQL 客户端', 'mysql', ['--version'], r'(?:Ver|Distrib) (\d+)\.', lambda m: int(m[1])==8, '8.x'),
-        ('redis', 'Redis 客户端', 'redis-cli', ['--version'], r'(?:redis-cli|memurai-cli) (\d+)', lambda m: True, '可用'),
+        ('redis', 'Redis 客户端', 'redis-cli', ['--version'], r'(?i)(?:redis|memurai)[^\r\n]*', lambda m: True, '可用'),
         ('curl', 'curl', 'curl', ['--version'], r'curl (\d+)', lambda m: True, '可用'),
     ]
     if platform.system()=='Darwin':
@@ -696,7 +696,7 @@ def show_environment_details(environment,dependencies):
 def prepare(env):
     environment=inspect_environment(env)
     if IS_WINDOWS and any(row['state'] != '已安装' for row in environment):
-        print('正在自动安装缺失的 Windows 运行环境 …', flush=True)
+        print('正在自动安装或修复缺失、不兼容的 Windows 运行环境 …', flush=True)
         run(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass',
              '-File', ROOT / 'scripts/windows_env.ps1'])
         activate_windows_tools()
